@@ -37,9 +37,8 @@ mod manager;
 mod task;
 
 pub use error::Error;
-pub use manager::{ClosedTask, TaskEntry, Manager, Event};
+pub use manager::{ClosedTask, Event, Manager, TaskEntry};
 
 /// Task identifier.
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(usize);
-

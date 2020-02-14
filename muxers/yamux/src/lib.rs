@@ -21,10 +21,20 @@
 //! Implements the Yamux multiplexing protocol for libp2p, see also the
 //! [specification](https://github.com/hashicorp/yamux/blob/master/spec.md).
 
-use futures::{future, prelude::*, ready, stream::{BoxStream, LocalBoxStream}};
+use futures::{
+    future,
+    prelude::*,
+    ready,
+    stream::{BoxStream, LocalBoxStream},
+};
 use libp2p_core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
 use parking_lot::Mutex;
-use std::{fmt, io, iter, ops::{Deref, DerefMut}, pin::Pin, task::Context};
+use std::{
+    fmt, io, iter,
+    ops::{Deref, DerefMut},
+    pin::Pin,
+    task::Context,
+};
 use thiserror::Error;
 
 pub use yamux::WindowUpdateMode;
@@ -44,7 +54,7 @@ struct Inner<S> {
     /// Handle to control the connection.
     control: yamux::Control,
     /// True, once we have received an inbound substream.
-    acknowledged: bool
+    acknowledged: bool,
 }
 
 /// A token to poll for an outbound substream.
@@ -53,7 +63,7 @@ pub struct OpenSubstreamToken(());
 
 impl<C> Yamux<Incoming<C>>
 where
-    C: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     /// Create a new Yamux connection.
     pub fn new(io: C, mut cfg: yamux::Config, mode: yamux::Mode) -> Self {
@@ -63,10 +73,10 @@ where
         let inner = Inner {
             incoming: Incoming {
                 stream: yamux::into_stream(conn).err_into().boxed(),
-                _marker: std::marker::PhantomData
+                _marker: std::marker::PhantomData,
             },
             control: ctrl,
-            acknowledged: false
+            acknowledged: false,
         };
         Yamux(Mutex::new(inner))
     }
@@ -74,7 +84,7 @@ where
 
 impl<C> Yamux<LocalIncoming<C>>
 where
-    C: AsyncRead + AsyncWrite + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     /// Create a new Yamux connection (which is ![`Send`]).
     pub fn local(io: C, mut cfg: yamux::Config, mode: yamux::Mode) -> Self {
@@ -84,10 +94,10 @@ where
         let inner = Inner {
             incoming: LocalIncoming {
                 stream: yamux::into_stream(conn).err_into().boxed_local(),
-                _marker: std::marker::PhantomData
+                _marker: std::marker::PhantomData,
             },
             control: ctrl,
-            acknowledged: false
+            acknowledged: false,
         };
         Yamux(Mutex::new(inner))
     }
@@ -97,7 +107,7 @@ type Poll<T> = std::task::Poll<Result<T, YamuxError>>;
 
 impl<S> libp2p_core::StreamMuxer for Yamux<S>
 where
-    S: Stream<Item = Result<yamux::Stream, YamuxError>> + Unpin
+    S: Stream<Item = Result<yamux::Stream, YamuxError>> + Unpin,
 {
     type Substream = yamux::Stream;
     type OutboundSubstream = OpenSubstreamToken;
@@ -111,7 +121,7 @@ where
                 Poll::Ready(Ok(s))
             }
             Some(Err(e)) => Poll::Ready(Err(e)),
-            None => Poll::Ready(Err(yamux::ConnectionError::Closed.into()))
+            None => Poll::Ready(Err(yamux::ConnectionError::Closed.into())),
         }
     }
 
@@ -121,19 +131,30 @@ where
 
     fn poll_outbound(&self, c: &mut Context, _: &mut OpenSubstreamToken) -> Poll<Self::Substream> {
         let mut inner = self.0.lock();
-        Pin::new(&mut inner.control).poll_open_stream(c).map_err(YamuxError)
+        Pin::new(&mut inner.control)
+            .poll_open_stream(c)
+            .map_err(YamuxError)
     }
 
     fn destroy_outbound(&self, _: Self::OutboundSubstream) {
         self.0.lock().control.abort_open_stream()
     }
 
-    fn read_substream(&self, c: &mut Context, s: &mut Self::Substream, b: &mut [u8]) -> Poll<usize> {
-        Pin::new(s).poll_read(c, b).map_err(|e| YamuxError(e.into()))
+    fn read_substream(
+        &self,
+        c: &mut Context,
+        s: &mut Self::Substream,
+        b: &mut [u8],
+    ) -> Poll<usize> {
+        Pin::new(s)
+            .poll_read(c, b)
+            .map_err(|e| YamuxError(e.into()))
     }
 
     fn write_substream(&self, c: &mut Context, s: &mut Self::Substream, b: &[u8]) -> Poll<usize> {
-        Pin::new(s).poll_write(c, b).map_err(|e| YamuxError(e.into()))
+        Pin::new(s)
+            .poll_write(c, b)
+            .map_err(|e| YamuxError(e.into()))
     }
 
     fn flush_substream(&self, c: &mut Context, s: &mut Self::Substream) -> Poll<()> {
@@ -144,7 +165,7 @@ where
         Pin::new(s).poll_close(c).map_err(|e| YamuxError(e.into()))
     }
 
-    fn destroy_substream(&self, _: Self::Substream) { }
+    fn destroy_substream(&self, _: Self::Substream) {}
 
     fn is_remote_acknowledged(&self) -> bool {
         self.0.lock().acknowledged
@@ -152,7 +173,9 @@ where
 
     fn close(&self, c: &mut Context) -> Poll<()> {
         let mut inner = self.0.lock();
-        Pin::new(&mut inner.control).poll_close(c).map_err(YamuxError)
+        Pin::new(&mut inner.control)
+            .poll_close(c)
+            .map_err(YamuxError)
     }
 
     fn flush_all(&self, _: &mut Context) -> Poll<()> {
@@ -219,7 +242,7 @@ impl UpgradeInfo for LocalConfig {
 
 impl<C> InboundUpgrade<C> for Config
 where
-    C: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = Yamux<Incoming<C>>;
     type Error = io::Error;
@@ -232,7 +255,7 @@ where
 
 impl<C> InboundUpgrade<C> for LocalConfig
 where
-    C: AsyncRead + AsyncWrite + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     type Output = Yamux<LocalIncoming<C>>;
     type Error = io::Error;
@@ -245,7 +268,7 @@ where
 
 impl<C> OutboundUpgrade<C> for Config
 where
-    C: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = Yamux<Incoming<C>>;
     type Error = io::Error;
@@ -258,7 +281,7 @@ where
 
 impl<C> OutboundUpgrade<C> for LocalConfig
 where
-    C: AsyncRead + AsyncWrite + Unpin + 'static
+    C: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     type Output = Yamux<LocalIncoming<C>>;
     type Error = io::Error;
@@ -283,7 +306,7 @@ impl Into<io::Error> for YamuxError {
 /// The [`futures::stream::Stream`] of incoming substreams.
 pub struct Incoming<T> {
     stream: BoxStream<'static, Result<yamux::Stream, YamuxError>>,
-    _marker: std::marker::PhantomData<T>
+    _marker: std::marker::PhantomData<T>,
 }
 
 impl<T> fmt::Debug for Incoming<T> {
@@ -295,7 +318,7 @@ impl<T> fmt::Debug for Incoming<T> {
 /// The [`futures::stream::Stream`] of incoming substreams (`!Send`).
 pub struct LocalIncoming<T> {
     stream: LocalBoxStream<'static, Result<yamux::Stream, YamuxError>>,
-    _marker: std::marker::PhantomData<T>
+    _marker: std::marker::PhantomData<T>,
 }
 
 impl<T> fmt::Debug for LocalIncoming<T> {
@@ -307,7 +330,10 @@ impl<T> fmt::Debug for LocalIncoming<T> {
 impl<T> Stream for Incoming<T> {
     type Item = Result<yamux::Stream, YamuxError>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> std::task::Poll<Option<Self::Item>> {
         self.stream.as_mut().poll_next_unpin(cx)
     }
 
@@ -316,13 +342,15 @@ impl<T> Stream for Incoming<T> {
     }
 }
 
-impl<T> Unpin for Incoming<T> {
-}
+impl<T> Unpin for Incoming<T> {}
 
 impl<T> Stream for LocalIncoming<T> {
     type Item = Result<yamux::Stream, YamuxError>;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> std::task::Poll<Option<Self::Item>> {
         self.stream.as_mut().poll_next_unpin(cx)
     }
 
@@ -331,5 +359,4 @@ impl<T> Stream for LocalIncoming<T> {
     }
 }
 
-impl<T> Unpin for LocalIncoming<T> {
-}
+impl<T> Unpin for LocalIncoming<T> {}

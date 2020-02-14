@@ -22,19 +22,12 @@ use crate::handler::{IdentifyHandler, IdentifyHandlerEvent};
 use crate::protocol::{IdentifyInfo, ReplySubstream};
 use futures::prelude::*;
 use libp2p_core::{
-    ConnectedPoint,
-    Multiaddr,
-    PeerId,
-    PublicKey,
-    upgrade::{ReadOneError, UpgradeError}
+    upgrade::{ReadOneError, UpgradeError},
+    ConnectedPoint, Multiaddr, PeerId, PublicKey,
 };
 use libp2p_swarm::{
-    NegotiatedSubstream,
-    NetworkBehaviour,
-    NetworkBehaviourAction,
-    PollParameters,
-    ProtocolsHandler,
-    ProtocolsHandlerUpgrErr
+    NegotiatedSubstream, NetworkBehaviour, NetworkBehaviourAction, PollParameters,
+    ProtocolsHandler, ProtocolsHandlerUpgrErr,
 };
 use std::{collections::HashMap, collections::VecDeque, io, pin::Pin, task::Context, task::Poll};
 
@@ -61,18 +54,22 @@ enum Reply {
     Queued {
         peer: PeerId,
         io: ReplySubstream<NegotiatedSubstream>,
-        observed: Multiaddr
+        observed: Multiaddr,
     },
     /// The reply is being sent.
     Sending {
         peer: PeerId,
         io: Pin<Box<dyn Future<Output = Result<(), io::Error>> + Send>>,
-    }
+    },
 }
 
 impl Identify {
     /// Creates a new `Identify` network behaviour.
-    pub fn new(protocol_version: String, agent_version: String, local_public_key: PublicKey) -> Self {
+    pub fn new(
+        protocol_version: String,
+        agent_version: String,
+        local_public_key: PublicKey,
+    ) -> Self {
         Identify {
             protocol_version,
             agent_version,
@@ -116,34 +113,34 @@ impl NetworkBehaviour for Identify {
     ) {
         match event {
             IdentifyHandlerEvent::Identified(remote) => {
-                self.events.push_back(
-                    NetworkBehaviourAction::GenerateEvent(
-                        IdentifyEvent::Received {
-                            peer_id,
-                            info: remote.info,
-                            observed_addr: remote.observed_addr.clone(),
-                        }));
-                self.events.push_back(
-                    NetworkBehaviourAction::ReportObservedAddr {
+                self.events.push_back(NetworkBehaviourAction::GenerateEvent(
+                    IdentifyEvent::Received {
+                        peer_id,
+                        info: remote.info,
+                        observed_addr: remote.observed_addr.clone(),
+                    },
+                ));
+                self.events
+                    .push_back(NetworkBehaviourAction::ReportObservedAddr {
                         address: remote.observed_addr,
                     });
             }
             IdentifyHandlerEvent::Identify(sender) => {
-                let observed = self.observed_addresses.get(&peer_id)
-                    .expect("We only receive events from nodes we're connected to. We insert \
+                let observed = self.observed_addresses.get(&peer_id).expect(
+                    "We only receive events from nodes we're connected to. We insert \
                              into the hashmap when we connect to a node and remove only when we \
-                             disconnect; QED");
-                self.pending_replies.push_back(
-                    Reply::Queued {
-                        peer: peer_id,
-                        io: sender,
-                        observed: observed.clone()
-                    });
+                             disconnect; QED",
+                );
+                self.pending_replies.push_back(Reply::Queued {
+                    peer: peer_id,
+                    io: sender,
+                    observed: observed.clone(),
+                });
             }
             IdentifyHandlerEvent::IdentificationError(error) => {
-                self.events.push_back(
-                    NetworkBehaviourAction::GenerateEvent(
-                        IdentifyEvent::Error { peer_id, error }));
+                self.events.push_back(NetworkBehaviourAction::GenerateEvent(
+                    IdentifyEvent::Error { peer_id, error },
+                ));
             }
         }
     }
@@ -195,12 +192,12 @@ impl NetworkBehaviour for Identify {
                             Poll::Ready(Ok(())) => {
                                 let event = IdentifyEvent::Sent { peer_id: peer };
                                 return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-                            },
+                            }
                             Poll::Pending => {
                                 self.pending_replies.push_back(Reply::Sending { peer, io });
                                 if sending == to_send {
                                     // All remaining futures are NotReady
-                                    break
+                                    break;
                                 } else {
                                     reply = self.pending_replies.pop_front();
                                 }
@@ -208,13 +205,15 @@ impl NetworkBehaviour for Identify {
                             Poll::Ready(Err(err)) => {
                                 let event = IdentifyEvent::Error {
                                     peer_id: peer,
-                                    error: ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Apply(err.into()))
+                                    error: ProtocolsHandlerUpgrErr::Upgrade(UpgradeError::Apply(
+                                        err.into(),
+                                    )),
                                 };
                                 return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
-                            },
+                            }
                         }
                     }
-                    None => unreachable!()
+                    None => unreachable!(),
                 }
             }
         }
@@ -252,27 +251,31 @@ pub enum IdentifyEvent {
 #[cfg(test)]
 mod tests {
     use crate::{Identify, IdentifyEvent};
-    use futures::{prelude::*, pin_mut};
-    use libp2p_core::{
-        identity,
-        PeerId,
-        muxing::StreamMuxer,
-        Transport,
-        upgrade
-    };
-    use libp2p_tcp::TcpConfig;
+    use futures::{pin_mut, prelude::*};
+    use libp2p_core::{identity, muxing::StreamMuxer, upgrade, PeerId, Transport};
+    use libp2p_mplex::MplexConfig;
     use libp2p_secio::SecioConfig;
     use libp2p_swarm::{Swarm, SwarmEvent};
-    use libp2p_mplex::MplexConfig;
+    use libp2p_tcp::TcpConfig;
     use std::{fmt, io};
 
-    fn transport() -> (identity::PublicKey, impl Transport<
-        Output = (PeerId, impl StreamMuxer<Substream = impl Send, OutboundSubstream = impl Send, Error = impl Into<io::Error>>),
-        Listener = impl Send,
-        ListenerUpgrade = impl Send,
-        Dial = impl Send,
-        Error = impl fmt::Debug
-    > + Clone) {
+    fn transport() -> (
+        identity::PublicKey,
+        impl Transport<
+                Output = (
+                    PeerId,
+                    impl StreamMuxer<
+                        Substream = impl Send,
+                        OutboundSubstream = impl Send,
+                        Error = impl Into<io::Error>,
+                    >,
+                ),
+                Listener = impl Send,
+                ListenerUpgrade = impl Send,
+                Dial = impl Send,
+                Error = impl fmt::Debug,
+            > + Clone,
+    ) {
         let id_keys = identity::Keypair::generate_ed25519();
         let pubkey = id_keys.public();
         let transport = TcpConfig::new()
@@ -324,7 +327,11 @@ mod tests {
                 let swarm2_fut = swarm2.next();
                 pin_mut!(swarm2_fut);
 
-                match future::select(swarm1_fut, swarm2_fut).await.factor_second().0 {
+                match future::select(swarm1_fut, swarm2_fut)
+                    .await
+                    .factor_second()
+                    .0
+                {
                     future::Either::Left(IdentifyEvent::Received { info, .. }) => {
                         assert_eq!(info.public_key, pubkey2);
                         assert_eq!(info.protocol_version, "c");

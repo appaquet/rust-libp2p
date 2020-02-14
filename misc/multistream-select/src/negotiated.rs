@@ -18,12 +18,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-use bytes::{BytesMut, Buf};
-use crate::protocol::{Protocol, MessageReader, Message, Version, ProtocolError};
-use futures::{prelude::*, Async, try_ready};
+use crate::protocol::{Message, MessageReader, Protocol, ProtocolError, Version};
+use bytes::{Buf, BytesMut};
+use futures::{prelude::*, try_ready, Async};
 use log::debug;
+use std::{error::Error, fmt, io, mem};
 use tokio_io::{AsyncRead, AsyncWrite};
-use std::{mem, io, fmt, error::Error};
 
 /// An I/O stream that has settled on an (application-layer) protocol to use.
 ///
@@ -38,13 +38,13 @@ use std::{mem, io, fmt, error::Error};
 /// protocol data to send implicitly triggers flushing of all yet unsent data.
 #[derive(Debug)]
 pub struct Negotiated<TInner> {
-    state: State<TInner>
+    state: State<TInner>,
 }
 
 /// A `Future` that waits on the completion of protocol negotiation.
 #[derive(Debug)]
 pub struct NegotiatedComplete<TInner> {
-    inner: Option<Negotiated<TInner>>
+    inner: Option<Negotiated<TInner>>,
 }
 
 impl<TInner: AsyncRead + AsyncWrite> Future for NegotiatedComplete<TInner> {
@@ -52,12 +52,15 @@ impl<TInner: AsyncRead + AsyncWrite> Future for NegotiatedComplete<TInner> {
     type Error = NegotiationError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let mut io = self.inner.take().expect("NegotiatedFuture called after completion.");
+        let mut io = self
+            .inner
+            .take()
+            .expect("NegotiatedFuture called after completion.");
         if io.poll()?.is_not_ready() {
             self.inner = Some(io);
-            return Ok(Async::NotReady)
+            return Ok(Async::NotReady);
         }
-        return Ok(Async::Ready(io))
+        return Ok(Async::Ready(io));
     }
 }
 
@@ -65,63 +68,96 @@ impl<TInner> Negotiated<TInner> {
     /// Creates a `Negotiated` in state [`State::Completed`], possibly
     /// with `remaining` data to be sent.
     pub(crate) fn completed(io: TInner, remaining: BytesMut) -> Self {
-        Negotiated { state: State::Completed { io, remaining } }
+        Negotiated {
+            state: State::Completed { io, remaining },
+        }
     }
 
     /// Creates a `Negotiated` in state [`State::Expecting`] that is still
     /// expecting confirmation of the given `protocol`.
-    pub(crate) fn expecting(io: MessageReader<TInner>, protocol: Protocol, version: Version) -> Self {
-        Negotiated { state: State::Expecting { io, protocol, version } }
+    pub(crate) fn expecting(
+        io: MessageReader<TInner>,
+        protocol: Protocol,
+        version: Version,
+    ) -> Self {
+        Negotiated {
+            state: State::Expecting {
+                io,
+                protocol,
+                version,
+            },
+        }
     }
 
     /// Polls the `Negotiated` for completion.
     fn poll(&mut self) -> Poll<(), NegotiationError>
     where
-        TInner: AsyncRead + AsyncWrite
+        TInner: AsyncRead + AsyncWrite,
     {
         // Flush any pending negotiation data.
         match self.poll_flush() {
-            Ok(Async::Ready(())) => {},
+            Ok(Async::Ready(())) => {}
             Ok(Async::NotReady) => return Ok(Async::NotReady),
             Err(e) => {
                 // If the remote closed the stream, it is important to still
                 // continue reading the data that was sent, if any.
                 if e.kind() != io::ErrorKind::WriteZero {
-                    return Err(e.into())
+                    return Err(e.into());
                 }
             }
         }
 
         if let State::Completed { remaining, .. } = &mut self.state {
             let _ = remaining.split_to(remaining.len()); // Drop remaining data flushed above.
-            return Ok(Async::Ready(()))
+            return Ok(Async::Ready(()));
         }
 
         // Read outstanding protocol negotiation messages.
         loop {
             match mem::replace(&mut self.state, State::Invalid) {
-                State::Expecting { mut io, protocol, version } => {
+                State::Expecting {
+                    mut io,
+                    protocol,
+                    version,
+                } => {
                     let msg = match io.poll() {
                         Ok(Async::Ready(Some(msg))) => msg,
                         Ok(Async::NotReady) => {
-                            self.state = State::Expecting { io, protocol, version };
-                            return Ok(Async::NotReady)
+                            self.state = State::Expecting {
+                                io,
+                                protocol,
+                                version,
+                            };
+                            return Ok(Async::NotReady);
                         }
                         Ok(Async::Ready(None)) => {
-                            self.state = State::Expecting { io, protocol, version };
-                            return Err(ProtocolError::IoError(
-                                io::ErrorKind::UnexpectedEof.into()).into())
+                            self.state = State::Expecting {
+                                io,
+                                protocol,
+                                version,
+                            };
+                            return Err(
+                                ProtocolError::IoError(io::ErrorKind::UnexpectedEof.into()).into()
+                            );
                         }
                         Err(err) => {
-                            self.state = State::Expecting { io, protocol, version };
-                            return Err(err.into())
+                            self.state = State::Expecting {
+                                io,
+                                protocol,
+                                version,
+                            };
+                            return Err(err.into());
                         }
                     };
 
                     if let Message::Header(v) = &msg {
                         if v == &version {
-                            self.state = State::Expecting { io, protocol, version };
-                            continue
+                            self.state = State::Expecting {
+                                io,
+                                protocol,
+                                version,
+                            };
+                            continue;
                         }
                     }
 
@@ -130,14 +166,14 @@ impl<TInner> Negotiated<TInner> {
                             debug!("Negotiated: Received confirmation for protocol: {}", p);
                             let (io, remaining) = io.into_inner();
                             self.state = State::Completed { io, remaining };
-                            return Ok(Async::Ready(()))
+                            return Ok(Async::Ready(()));
                         }
                     }
 
-                    return Err(NegotiationError::Failed)
+                    return Err(NegotiationError::Failed);
                 }
 
-                _ => panic!("Negotiated: Invalid state")
+                _ => panic!("Negotiated: Invalid state"),
             }
         }
     }
@@ -160,7 +196,7 @@ enum State<R> {
         /// The expected protocol (i.e. name and version).
         protocol: Protocol,
         /// The expected multistream-select protocol version.
-        version: Version
+        version: Version,
     },
 
     /// In this state, a protocol has been agreed upon and may
@@ -176,7 +212,7 @@ enum State<R> {
 
 impl<R> io::Read for Negotiated<R>
 where
-    R: AsyncRead + AsyncWrite
+    R: AsyncRead + AsyncWrite,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
@@ -184,7 +220,7 @@ where
                 // If protocol negotiation is complete and there is no
                 // remaining data to be flushed, commence with reading.
                 if remaining.is_empty() {
-                    return io.read(buf)
+                    return io.read(buf);
                 }
             }
 
@@ -195,11 +231,11 @@ where
             // There is still remaining data to be sent before data relating
             // to the negotiated protocol can be read.
             if let Ok(Async::NotReady) = result {
-                return Err(io::ErrorKind::WouldBlock.into())
+                return Err(io::ErrorKind::WouldBlock.into());
             }
 
             if let Err(err) = result {
-                return Err(err.into())
+                return Err(err.into());
             }
         }
     }
@@ -207,63 +243,68 @@ where
 
 impl<TInner> AsyncRead for Negotiated<TInner>
 where
-    TInner: AsyncRead + AsyncWrite
+    TInner: AsyncRead + AsyncWrite,
 {
     unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [u8]) -> bool {
         match &self.state {
-            State::Completed { io, .. } =>
-                io.prepare_uninitialized_buffer(buf),
-            State::Expecting { io, .. } =>
-                io.inner_ref().prepare_uninitialized_buffer(buf),
-            State::Invalid => panic!("Negotiated: Invalid state")
+            State::Completed { io, .. } => io.prepare_uninitialized_buffer(buf),
+            State::Expecting { io, .. } => io.inner_ref().prepare_uninitialized_buffer(buf),
+            State::Invalid => panic!("Negotiated: Invalid state"),
         }
     }
 }
 
 impl<TInner> io::Write for Negotiated<TInner>
 where
-    TInner: AsyncWrite
+    TInner: AsyncWrite,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match &mut self.state {
-            State::Completed { io, ref mut remaining } => {
+            State::Completed {
+                io,
+                ref mut remaining,
+            } => {
                 while !remaining.is_empty() {
                     let n = io.write(&remaining)?;
                     if n == 0 {
-                        return Err(io::ErrorKind::WriteZero.into())
+                        return Err(io::ErrorKind::WriteZero.into());
                     }
                     remaining.advance(n);
                 }
                 io.write(buf)
-            },
+            }
             State::Expecting { io, .. } => io.write(buf),
-            State::Invalid => panic!("Negotiated: Invalid state")
+            State::Invalid => panic!("Negotiated: Invalid state"),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match &mut self.state {
-            State::Completed { io, ref mut remaining } => {
+            State::Completed {
+                io,
+                ref mut remaining,
+            } => {
                 while !remaining.is_empty() {
                     let n = io.write(remaining)?;
                     if n == 0 {
                         return Err(io::Error::new(
                             io::ErrorKind::WriteZero,
-                            "Failed to write remaining buffer."))
+                            "Failed to write remaining buffer.",
+                        ));
                     }
                     remaining.advance(n);
                 }
                 io.flush()
-            },
+            }
             State::Expecting { io, .. } => io.flush(),
-            State::Invalid => panic!("Negotiated: Invalid state")
+            State::Invalid => panic!("Negotiated: Invalid state"),
         }
     }
 }
 
 impl<TInner> AsyncWrite for Negotiated<TInner>
 where
-    TInner: AsyncWrite + AsyncRead
+    TInner: AsyncWrite + AsyncRead,
 {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         // Ensure all data has been flushed and expected negotiation messages
@@ -273,7 +314,7 @@ where
         match &mut self.state {
             State::Completed { io, .. } => io.shutdown(),
             State::Expecting { io, .. } => io.shutdown(),
-            State::Invalid => panic!("Negotiated: Invalid state")
+            State::Invalid => panic!("Negotiated: Invalid state"),
         }
     }
 }
@@ -303,7 +344,7 @@ impl From<io::Error> for NegotiationError {
 impl Into<io::Error> for NegotiationError {
     fn into(self) -> io::Error {
         if let NegotiationError::ProtocolError(e) = self {
-            return e.into()
+            return e.into();
         }
         io::Error::new(io::ErrorKind::Other, self)
     }
@@ -321,10 +362,10 @@ impl Error for NegotiationError {
 impl fmt::Display for NegotiationError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            NegotiationError::ProtocolError(p) =>
-                fmt.write_fmt(format_args!("Protocol error: {}", p)),
-            NegotiationError::Failed =>
-                fmt.write_str("Protocol negotiation failed.")
+            NegotiationError::ProtocolError(p) => {
+                fmt.write_fmt(format_args!("Protocol error: {}", p))
+            }
+            NegotiationError::Failed => fmt.write_str("Protocol negotiation failed."),
         }
     }
 }
@@ -336,14 +377,17 @@ mod tests {
     use std::io::Write;
 
     /// An I/O resource with a fixed write capacity (total and per write op).
-    struct Capped { buf: Vec<u8>, step: usize }
+    struct Capped {
+        buf: Vec<u8>,
+        step: usize,
+    }
 
     impl io::Write for Capped {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
             if self.buf.len() + buf.len() > self.buf.capacity() {
-                return Err(io::ErrorKind::WriteZero.into())
+                return Err(io::ErrorKind::WriteZero.into());
             }
-            self.buf.write(&buf[.. usize::min(self.step, buf.len())])
+            self.buf.write(&buf[..usize::min(self.step, buf.len())])
         }
 
         fn flush(&mut self) -> io::Result<()> {
@@ -362,7 +406,10 @@ mod tests {
         fn prop(rem: Vec<u8>, new: Vec<u8>, free: u8, step: u8) -> TestResult {
             let cap = rem.len() + free as usize;
             let step = u8::min(free, step) as usize + 1;
-            let buf = Capped { buf: Vec::with_capacity(cap), step };
+            let buf = Capped {
+                buf: Vec::with_capacity(cap),
+                step,
+            };
             let rem = BytesMut::from(&rem[..]);
             let mut io = Negotiated::completed(buf, rem.clone());
             let mut written = 0;
@@ -370,29 +417,29 @@ mod tests {
                 // Write until `new` has been fully written or the capped buffer runs
                 // over capacity and yields WriteZero.
                 match io.write(&new[written..]) {
-                    Ok(n) =>
+                    Ok(n) => {
                         if let State::Completed { remaining, .. } = &io.state {
                             assert!(remaining.is_empty());
                             written += n;
                             if written == new.len() {
-                                return TestResult::passed()
+                                return TestResult::passed();
                             }
                         } else {
-                            return TestResult::failed()
+                            return TestResult::failed();
                         }
+                    }
                     Err(e) if e.kind() == io::ErrorKind::WriteZero => {
                         if let State::Completed { .. } = &io.state {
                             assert!(rem.len() + new.len() > cap);
-                            return TestResult::passed()
+                            return TestResult::passed();
                         } else {
-                            return TestResult::failed()
+                            return TestResult::failed();
                         }
                     }
-                    Err(e) => panic!("Unexpected error: {:?}", e)
+                    Err(e) => panic!("Unexpected error: {:?}", e),
                 }
             }
         }
-        quickcheck(prop as fn(_,_,_,_) -> _)
+        quickcheck(prop as fn(_, _, _, _) -> _)
     }
 }
-

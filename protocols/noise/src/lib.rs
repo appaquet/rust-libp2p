@@ -56,14 +56,14 @@ mod io;
 mod protocol;
 
 pub use error::NoiseError;
-pub use io::NoiseOutput;
 pub use io::handshake;
-pub use io::handshake::{Handshake, RemoteIdentity, IdentityExchange};
-pub use protocol::{Keypair, AuthenticKeypair, KeypairIdentity, PublicKey, SecretKey};
-pub use protocol::{Protocol, ProtocolParams, x25519::X25519, IX, IK, XX};
+pub use io::handshake::{Handshake, IdentityExchange, RemoteIdentity};
+pub use io::NoiseOutput;
+pub use protocol::{x25519::X25519, Protocol, ProtocolParams, IK, IX, XX};
+pub use protocol::{AuthenticKeypair, Keypair, KeypairIdentity, PublicKey, SecretKey};
 
 use futures::prelude::*;
-use libp2p_core::{identity, PeerId, UpgradeInfo, InboundUpgrade, OutboundUpgrade};
+use libp2p_core::{identity, InboundUpgrade, OutboundUpgrade, PeerId, UpgradeInfo};
 use std::pin::Pin;
 use zeroize::Zeroize;
 
@@ -73,7 +73,7 @@ pub struct NoiseConfig<P, C: Zeroize, R = ()> {
     dh_keys: AuthenticKeypair<C>,
     params: ProtocolParams,
     remote: R,
-    _marker: std::marker::PhantomData<P>
+    _marker: std::marker::PhantomData<P>,
 }
 
 impl<H, C: Zeroize, R> NoiseConfig<H, C, R> {
@@ -86,7 +86,7 @@ impl<H, C: Zeroize, R> NoiseConfig<H, C, R> {
 
 impl<C> NoiseConfig<IX, C>
 where
-    C: Protocol<C> + Zeroize
+    C: Protocol<C> + Zeroize,
 {
     /// Create a new `NoiseConfig` for the `IX` handshake pattern.
     pub fn ix(dh_keys: AuthenticKeypair<C>) -> Self {
@@ -94,14 +94,14 @@ where
             dh_keys,
             params: C::params_ix(),
             remote: (),
-            _marker: std::marker::PhantomData
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
 impl<C> NoiseConfig<XX, C>
 where
-    C: Protocol<C> + Zeroize
+    C: Protocol<C> + Zeroize,
 {
     /// Create a new `NoiseConfig` for the `XX` handshake pattern.
     pub fn xx(dh_keys: AuthenticKeypair<C>) -> Self {
@@ -109,14 +109,14 @@ where
             dh_keys,
             params: C::params_xx(),
             remote: (),
-            _marker: std::marker::PhantomData
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
 impl<C> NoiseConfig<IK, C>
 where
-    C: Protocol<C> + Zeroize
+    C: Protocol<C> + Zeroize,
 {
     /// Create a new `NoiseConfig` for the `IK` handshake pattern (recipient side).
     ///
@@ -127,14 +127,14 @@ where
             dh_keys,
             params: C::params_ik(),
             remote: (),
-            _marker: std::marker::PhantomData
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
 impl<C> NoiseConfig<IK, C, (PublicKey<C>, identity::PublicKey)>
 where
-    C: Protocol<C> + Zeroize
+    C: Protocol<C> + Zeroize,
 {
     /// Create a new `NoiseConfig` for the `IK` handshake pattern (initiator side).
     ///
@@ -143,13 +143,13 @@ where
     pub fn ik_dialer(
         dh_keys: AuthenticKeypair<C>,
         remote_id: identity::PublicKey,
-        remote_dh: PublicKey<C>
+        remote_dh: PublicKey<C>,
     ) -> Self {
         NoiseConfig {
             dh_keys,
             params: C::params_ik(),
             remote: (remote_dh, remote_id),
-            _marker: std::marker::PhantomData
+            _marker: std::marker::PhantomData,
         }
     }
 }
@@ -167,13 +167,18 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_inbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .build_responder()
             .map_err(NoiseError::from);
-        handshake::rt1_responder(socket, session,
+        handshake::rt1_responder(
+            socket,
+            session,
             self.dh_keys.into_identity(),
-            IdentityExchange::Mutual)
+            IdentityExchange::Mutual,
+        )
     }
 }
 
@@ -188,13 +193,18 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_outbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .build_initiator()
             .map_err(NoiseError::from);
-        handshake::rt1_initiator(socket, session,
-                                 self.dh_keys.into_identity(),
-                                 IdentityExchange::Mutual)
+        handshake::rt1_initiator(
+            socket,
+            session,
+            self.dh_keys.into_identity(),
+            IdentityExchange::Mutual,
+        )
     }
 }
 
@@ -211,13 +221,18 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_inbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .build_responder()
             .map_err(NoiseError::from);
-        handshake::rt15_responder(socket, session,
+        handshake::rt15_responder(
+            socket,
+            session,
             self.dh_keys.into_identity(),
-            IdentityExchange::Mutual)
+            IdentityExchange::Mutual,
+        )
     }
 }
 
@@ -232,13 +247,18 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_outbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .build_initiator()
             .map_err(NoiseError::from);
-        handshake::rt15_initiator(socket, session,
+        handshake::rt15_initiator(
+            socket,
+            session,
             self.dh_keys.into_identity(),
-            IdentityExchange::Mutual)
+            IdentityExchange::Mutual,
+        )
     }
 }
 
@@ -255,13 +275,18 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_inbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .build_responder()
             .map_err(NoiseError::from);
-        handshake::rt1_responder(socket, session,
+        handshake::rt1_responder(
+            socket,
+            session,
             self.dh_keys.into_identity(),
-            IdentityExchange::Receive)
+            IdentityExchange::Receive,
+        )
     }
 }
 
@@ -276,14 +301,21 @@ where
     type Future = Handshake<T, C>;
 
     fn upgrade_outbound(self, socket: T, _: Self::Info) -> Self::Future {
-        let session = self.params.into_builder()
+        let session = self
+            .params
+            .into_builder()
             .local_private_key(self.dh_keys.secret().as_ref())
             .remote_public_key(self.remote.0.as_ref())
             .build_initiator()
             .map_err(NoiseError::from);
-        handshake::rt1_initiator(socket, session,
+        handshake::rt1_initiator(
+            socket,
+            session,
             self.dh_keys.into_identity(),
-            IdentityExchange::Send { remote: self.remote.1 })
+            IdentityExchange::Send {
+                remote: self.remote.1,
+            },
+        )
     }
 }
 
@@ -301,12 +333,12 @@ where
 /// transport for use with a [`Network`](libp2p_core::nodes::Network).
 #[derive(Clone)]
 pub struct NoiseAuthenticated<P, C: Zeroize, R> {
-    config: NoiseConfig<P, C, R>
+    config: NoiseConfig<P, C, R>,
 }
 
 impl<P, C: Zeroize, R> UpgradeInfo for NoiseAuthenticated<P, C, R>
 where
-    NoiseConfig<P, C, R>: UpgradeInfo
+    NoiseConfig<P, C, R>: UpgradeInfo,
 {
     type Info = <NoiseConfig<P, C, R> as UpgradeInfo>::Info;
     type InfoIter = <NoiseConfig<P, C, R> as UpgradeInfo>::InfoIter;
@@ -318,10 +350,9 @@ where
 
 impl<T, P, C, R> InboundUpgrade<T> for NoiseAuthenticated<P, C, R>
 where
-    NoiseConfig<P, C, R>: UpgradeInfo + InboundUpgrade<T,
-        Output = (RemoteIdentity<C>, NoiseOutput<T>),
-        Error = NoiseError
-    > + 'static,
+    NoiseConfig<P, C, R>: UpgradeInfo
+        + InboundUpgrade<T, Output = (RemoteIdentity<C>, NoiseOutput<T>), Error = NoiseError>
+        + 'static,
     <NoiseConfig<P, C, R> as InboundUpgrade<T>>::Future: Send,
     T: AsyncRead + AsyncWrite + Send + 'static,
     C: Protocol<C> + AsRef<[u8]> + Zeroize + Send + 'static,
@@ -331,20 +362,22 @@ where
     type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + Send>>;
 
     fn upgrade_inbound(self, socket: T, info: Self::Info) -> Self::Future {
-        Box::pin(self.config.upgrade_inbound(socket, info)
-            .and_then(|(remote, io)| match remote {
-                RemoteIdentity::IdentityKey(pk) => future::ok((pk.into_peer_id(), io)),
-                _ => future::err(NoiseError::AuthenticationFailed)
-            }))
+        Box::pin(
+            self.config
+                .upgrade_inbound(socket, info)
+                .and_then(|(remote, io)| match remote {
+                    RemoteIdentity::IdentityKey(pk) => future::ok((pk.into_peer_id(), io)),
+                    _ => future::err(NoiseError::AuthenticationFailed),
+                }),
+        )
     }
 }
 
 impl<T, P, C, R> OutboundUpgrade<T> for NoiseAuthenticated<P, C, R>
 where
-    NoiseConfig<P, C, R>: UpgradeInfo + OutboundUpgrade<T,
-        Output = (RemoteIdentity<C>, NoiseOutput<T>),
-        Error = NoiseError
-    > + 'static,
+    NoiseConfig<P, C, R>: UpgradeInfo
+        + OutboundUpgrade<T, Output = (RemoteIdentity<C>, NoiseOutput<T>), Error = NoiseError>
+        + 'static,
     <NoiseConfig<P, C, R> as OutboundUpgrade<T>>::Future: Send,
     T: AsyncRead + AsyncWrite + Send + 'static,
     C: Protocol<C> + AsRef<[u8]> + Zeroize + Send + 'static,
@@ -354,10 +387,13 @@ where
     type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + Send>>;
 
     fn upgrade_outbound(self, socket: T, info: Self::Info) -> Self::Future {
-        Box::pin(self.config.upgrade_outbound(socket, info)
-            .and_then(|(remote, io)| match remote {
-                RemoteIdentity::IdentityKey(pk) => future::ok((pk.into_peer_id(), io)),
-                _ => future::err(NoiseError::AuthenticationFailed)
-            }))
+        Box::pin(
+            self.config
+                .upgrade_outbound(socket, info)
+                .and_then(|(remote, io)| match remote {
+                    RemoteIdentity::IdentityKey(pk) => future::ok((pk.into_peer_id(), io)),
+                    _ => future::err(NoiseError::AuthenticationFailed),
+                }),
+        )
     }
 }

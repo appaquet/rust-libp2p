@@ -27,20 +27,26 @@ pub mod tls;
 use bytes::BytesMut;
 use error::Error;
 use framed::Connection;
-use futures::{future::BoxFuture, prelude::*, stream::BoxStream, ready};
+use futures::{future::BoxFuture, prelude::*, ready, stream::BoxStream};
 use libp2p_core::{
-    ConnectedPoint,
-    Transport,
     multiaddr::Multiaddr,
-    transport::{map::{MapFuture, MapStream}, ListenerEvent, TransportError}
+    transport::{
+        map::{MapFuture, MapStream},
+        ListenerEvent, TransportError,
+    },
+    ConnectedPoint, Transport,
 };
 use rw_stream_sink::RwStreamSink;
-use std::{io, pin::Pin, task::{Context, Poll}};
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 /// A Websocket transport.
 #[derive(Debug, Clone)]
 pub struct WsConfig<T> {
-    transport: framed::WsConfig<T>
+    transport: framed::WsConfig<T>,
 }
 
 impl<T> WsConfig<T> {
@@ -86,9 +92,7 @@ impl<T> WsConfig<T> {
 
 impl<T> From<framed::WsConfig<T>> for WsConfig<T> {
     fn from(framed: framed::WsConfig<T>) -> Self {
-        WsConfig {
-            transport: framed
-        }
+        WsConfig { transport: framed }
     }
 }
 
@@ -99,7 +103,7 @@ where
     T::Dial: Send + 'static,
     T::Listener: Send + 'static,
     T::ListenerUpgrade: Send + 'static,
-    T::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static
+    T::Output: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     type Output = RwStreamSink<BytesConnection<T::Output>>;
     type Error = Error<T::Error>;
@@ -108,16 +112,21 @@ where
     type Dial = MapFuture<InnerFuture<T::Output, T::Error>, WrapperFn<T::Output>>;
 
     fn listen_on(self, addr: Multiaddr) -> Result<Self::Listener, TransportError<Self::Error>> {
-        self.transport.map(wrap_connection as WrapperFn<T::Output>).listen_on(addr)
+        self.transport
+            .map(wrap_connection as WrapperFn<T::Output>)
+            .listen_on(addr)
     }
 
     fn dial(self, addr: Multiaddr) -> Result<Self::Dial, TransportError<Self::Error>> {
-        self.transport.map(wrap_connection as WrapperFn<T::Output>).dial(addr)
+        self.transport
+            .map(wrap_connection as WrapperFn<T::Output>)
+            .dial(addr)
     }
 }
 
 /// Type alias corresponding to `framed::WsConfig::Listener`.
-pub type InnerStream<T, E> = BoxStream<'static, Result<ListenerEvent<InnerFuture<T, E>, Error<E>>, Error<E>>>;
+pub type InnerStream<T, E> =
+    BoxStream<'static, Result<ListenerEvent<InnerFuture<T, E>, Error<E>>, Error<E>>>;
 
 /// Type alias corresponding to `framed::WsConfig::Dial` and `framed::WsConfig::ListenerUpgrade`.
 pub type InnerFuture<T, E> = BoxFuture<'static, Result<Connection<T>, Error<E>>>;
@@ -129,7 +138,7 @@ pub type WrapperFn<T> = fn(Connection<T>, ConnectedPoint) -> RwStreamSink<BytesC
 /// implementing `AsyncRead` + `AsyncWrite`.
 fn wrap_connection<T>(c: Connection<T>, _: ConnectedPoint) -> RwStreamSink<BytesConnection<T>>
 where
-    T: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     RwStreamSink::new(BytesConnection(c))
 }
@@ -140,7 +149,7 @@ pub struct BytesConnection<T>(Connection<T>);
 
 impl<T> Stream for BytesConnection<T>
 where
-    T: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Item = io::Result<BytesMut>;
 
@@ -148,10 +157,10 @@ where
         loop {
             if let Some(item) = ready!(self.0.try_poll_next_unpin(cx)?) {
                 if item.is_data() {
-                    return Poll::Ready(Some(Ok(BytesMut::from(item.as_ref()))))
+                    return Poll::Ready(Some(Ok(BytesMut::from(item.as_ref()))));
                 }
             } else {
-                return Poll::Ready(None)
+                return Poll::Ready(None);
             }
         }
     }
@@ -159,7 +168,7 @@ where
 
 impl<T> Sink<BytesMut> for BytesConnection<T>
 where
-    T: AsyncRead + AsyncWrite + Send + Unpin + 'static
+    T: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Error = io::Error;
 
@@ -184,11 +193,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use libp2p_core::Multiaddr;
-    use libp2p_tcp as tcp;
-    use futures::prelude::*;
-    use libp2p_core::{Transport, multiaddr::Protocol};
     use super::WsConfig;
+    use futures::prelude::*;
+    use libp2p_core::Multiaddr;
+    use libp2p_core::{multiaddr::Protocol, Transport};
+    use libp2p_tcp as tcp;
 
     #[test]
     fn dialer_connects_to_listener_ipv4() {
@@ -205,11 +214,11 @@ mod tests {
     async fn connect(listen_addr: Multiaddr) {
         let ws_config = WsConfig::new(tcp::TcpConfig::new());
 
-        let mut listener = ws_config.clone()
-            .listen_on(listen_addr)
-            .expect("listener");
+        let mut listener = ws_config.clone().listen_on(listen_addr).expect("listener");
 
-        let addr = listener.try_next().await
+        let addr = listener
+            .try_next()
+            .await
             .expect("some event")
             .expect("no error")
             .into_new_address()
@@ -219,7 +228,8 @@ mod tests {
         assert_ne!(Some(Protocol::Tcp(0)), addr.iter().nth(1));
 
         let inbound = async move {
-            let (conn, _addr) = listener.try_filter_map(|e| future::ready(Ok(e.into_upgrade())))
+            let (conn, _addr) = listener
+                .try_filter_map(|e| future::ready(Ok(e.into_upgrade())))
                 .try_next()
                 .await
                 .unwrap()

@@ -18,17 +18,17 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use super::{Error, TaskId};
 use crate::{
     muxing::StreamMuxer,
     nodes::{
         handled_node::{HandledNode, IntoNodeHandler, NodeHandler},
-        node::{Close, Substream}
-    }
+        node::{Close, Substream},
+    },
 };
-use futures::{prelude::*, channel::mpsc, stream};
+use futures::{channel::mpsc, prelude::*, stream};
 use smallvec::SmallVec;
 use std::{pin::Pin, task::Context, task::Poll};
-use super::{TaskId, Error};
 
 /// Message to transmit from the public API to a task.
 #[derive(Debug)]
@@ -37,7 +37,7 @@ pub enum ToTaskMessage<T> {
     HandlerEvent(T),
     /// When received, stores the parameter inside the task and keeps it alive
     /// until we have an acknowledgment that the remote has accepted our handshake.
-    TakeOver(mpsc::Sender<ToTaskMessage<T>>)
+    TakeOver(mpsc::Sender<ToTaskMessage<T>>),
 }
 
 /// Message to transmit from a task to the public API.
@@ -48,7 +48,7 @@ pub enum FromTaskMessage<T, H, E, HE, C> {
     /// The task closed.
     TaskClosed(Error<E, HE>, Option<H>),
     /// An event from the node.
-    NodeEvent(T)
+    NodeEvent(T),
 }
 
 /// Implementation of [`Future`] that handles a single node.
@@ -56,13 +56,16 @@ pub struct Task<F, M, H, I, O, E, C>
 where
     M: StreamMuxer,
     H: IntoNodeHandler<C>,
-    H::Handler: NodeHandler<Substream = Substream<M>>
+    H::Handler: NodeHandler<Substream = Substream<M>>,
 {
     /// The ID of this task.
     id: TaskId,
 
     /// Sender to transmit messages to the outside.
-    sender: mpsc::Sender<(FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>, TaskId)>,
+    sender: mpsc::Sender<(
+        FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>,
+        TaskId,
+    )>,
 
     /// Receiver of messages from the outsize.
     receiver: stream::Fuse<mpsc::Receiver<ToTaskMessage<I>>>,
@@ -71,45 +74,55 @@ where
     state: State<F, M, H, I, O, E, C>,
 
     /// Channels to keep alive for as long as we don't have an acknowledgment from the remote.
-    taken_over: SmallVec<[mpsc::Sender<ToTaskMessage<I>>; 1]>
+    taken_over: SmallVec<[mpsc::Sender<ToTaskMessage<I>>; 1]>,
 }
 
 impl<F, M, H, I, O, E, C> Task<F, M, H, I, O, E, C>
 where
     M: StreamMuxer,
     H: IntoNodeHandler<C>,
-    H::Handler: NodeHandler<Substream = Substream<M>>
+    H::Handler: NodeHandler<Substream = Substream<M>>,
 {
     /// Create a new task to connect and handle some node.
-    pub fn new (
+    pub fn new(
         i: TaskId,
-        s: mpsc::Sender<(FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>, TaskId)>,
+        s: mpsc::Sender<(
+            FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>,
+            TaskId,
+        )>,
         r: mpsc::Receiver<ToTaskMessage<I>>,
         f: F,
-        h: H
+        h: H,
     ) -> Self {
         Task {
             id: i,
             sender: s,
             receiver: r.fuse(),
-            state: State::Future { future: Box::pin(f), handler: h, events_buffer: Vec::new() },
-            taken_over: SmallVec::new()
+            state: State::Future {
+                future: Box::pin(f),
+                handler: h,
+                events_buffer: Vec::new(),
+            },
+            taken_over: SmallVec::new(),
         }
     }
 
     /// Create a task for an existing node we are already connected to.
-    pub fn node (
+    pub fn node(
         i: TaskId,
-        s: mpsc::Sender<(FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>, TaskId)>,
+        s: mpsc::Sender<(
+            FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>,
+            TaskId,
+        )>,
         r: mpsc::Receiver<ToTaskMessage<I>>,
-        n: HandledNode<M, H::Handler>
+        n: HandledNode<M, H::Handler>,
     ) -> Self {
         Task {
             id: i,
             sender: s,
             receiver: r.fuse(),
             state: State::Node(n),
-            taken_over: SmallVec::new()
+            taken_over: SmallVec::new(),
         }
     }
 }
@@ -119,7 +132,7 @@ enum State<F, M, H, I, O, E, C>
 where
     M: StreamMuxer,
     H: IntoNodeHandler<C>,
-    H::Handler: NodeHandler<Substream = Substream<M>>
+    H::Handler: NodeHandler<Substream = Substream<M>>,
 {
     /// Future to resolve to connect to the node.
     Future {
@@ -131,7 +144,7 @@ where
         /// While we are dialing the future, we need to buffer the events received on
         /// `receiver` so that they get delivered once dialing succeeds. We can't simply leave
         /// events in `receiver` because we have to detect if it gets closed.
-        events_buffer: Vec<I>
+        events_buffer: Vec<I>,
     },
 
     /// An event should be sent to the outside world.
@@ -139,7 +152,7 @@ where
         /// The node, if available.
         node: Option<HandledNode<M, H::Handler>>,
         /// The actual event message to send.
-        event: FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>
+        event: FromTaskMessage<O, H, E, <H::Handler as NodeHandler>::Error, C>,
     },
 
     /// Fully functional node.
@@ -150,14 +163,14 @@ where
 
     /// Interim state that can only be observed externally if the future
     /// resolved to a value previously.
-    Undefined
+    Undefined,
 }
 
 impl<F, M, H, I, O, E, C> Unpin for Task<F, M, H, I, O, E, C>
 where
     M: StreamMuxer,
     H: IntoNodeHandler<C>,
-    H::Handler: NodeHandler<Substream = Substream<M>>
+    H::Handler: NodeHandler<Substream = Substream<M>>,
 {
 }
 
@@ -166,7 +179,7 @@ where
     M: StreamMuxer,
     F: Future<Output = Result<(C, M), E>>,
     H: IntoNodeHandler<C>,
-    H::Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O>
+    H::Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O>,
 {
     type Output = ();
 
@@ -180,33 +193,44 @@ where
 
         'poll: loop {
             match std::mem::replace(&mut this.state, State::Undefined) {
-                State::Future { mut future, handler, mut events_buffer } => {
+                State::Future {
+                    mut future,
+                    handler,
+                    mut events_buffer,
+                } => {
                     // If this.receiver is closed, we stop the task.
                     loop {
                         match Stream::poll_next(Pin::new(&mut this.receiver), cx) {
                             Poll::Pending => break,
                             Poll::Ready(None) => return Poll::Ready(()),
-                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) =>
-                                events_buffer.push(event),
-                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) =>
-                                this.taken_over.push(take_over),
+                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) => {
+                                events_buffer.push(event)
+                            }
+                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) => {
+                                this.taken_over.push(take_over)
+                            }
                         }
                     }
                     // Check if dialing succeeded.
                     match Future::poll(Pin::new(&mut future), cx) {
                         Poll::Ready(Ok((conn_info, muxer))) => {
-                            let mut node = HandledNode::new(muxer, handler.into_handler(&conn_info));
+                            let mut node =
+                                HandledNode::new(muxer, handler.into_handler(&conn_info));
                             for event in events_buffer {
                                 node.inject_event(event)
                             }
                             this.state = State::SendEvent {
                                 node: Some(node),
-                                event: FromTaskMessage::NodeReached(conn_info)
+                                event: FromTaskMessage::NodeReached(conn_info),
                             }
                         }
                         Poll::Pending => {
-                            this.state = State::Future { future, handler, events_buffer };
-                            return Poll::Pending
+                            this.state = State::Future {
+                                future,
+                                handler,
+                                events_buffer,
+                            };
+                            return Poll::Pending;
                         }
                         Poll::Ready(Err(e)) => {
                             let event = FromTaskMessage::TaskClosed(Error::Reach(e), Some(handler));
@@ -219,14 +243,16 @@ where
                     loop {
                         match Stream::poll_next(Pin::new(&mut this.receiver), cx) {
                             Poll::Pending => break,
-                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) =>
-                                node.inject_event(event),
-                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) =>
-                                this.taken_over.push(take_over),
+                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) => {
+                                node.inject_event(event)
+                            }
+                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) => {
+                                this.taken_over.push(take_over)
+                            }
                             Poll::Ready(None) => {
                                 // Node closed by the external API; start closing.
                                 this.state = State::Closing(node.close());
-                                continue 'poll
+                                continue 'poll;
                             }
                         }
                     }
@@ -238,19 +264,19 @@ where
                         match HandledNode::poll(Pin::new(&mut node), cx) {
                             Poll::Pending => {
                                 this.state = State::Node(node);
-                                return Poll::Pending
+                                return Poll::Pending;
                             }
                             Poll::Ready(Ok(event)) => {
                                 this.state = State::SendEvent {
                                     node: Some(node),
-                                    event: FromTaskMessage::NodeEvent(event)
+                                    event: FromTaskMessage::NodeEvent(event),
                                 };
-                                continue 'poll
+                                continue 'poll;
                             }
                             Poll::Ready(Err(err)) => {
                                 let event = FromTaskMessage::TaskClosed(Error::Node(err), None);
                                 this.state = State::SendEvent { node: None, event };
-                                continue 'poll
+                                continue 'poll;
                             }
                         }
                     }
@@ -260,34 +286,37 @@ where
                     loop {
                         match Stream::poll_next(Pin::new(&mut this.receiver), cx) {
                             Poll::Pending => break,
-                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) =>
+                            Poll::Ready(Some(ToTaskMessage::HandlerEvent(event))) => {
                                 if let Some(ref mut n) = node {
                                     n.inject_event(event)
                                 }
-                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) =>
-                                this.taken_over.push(take_over),
+                            }
+                            Poll::Ready(Some(ToTaskMessage::TakeOver(take_over))) => {
+                                this.taken_over.push(take_over)
+                            }
                             Poll::Ready(None) =>
-                                // Node closed by the external API; start closing.
+                            // Node closed by the external API; start closing.
+                            {
                                 if let Some(n) = node {
                                     this.state = State::Closing(n.close());
-                                    continue 'poll
+                                    continue 'poll;
                                 } else {
-                                    return Poll::Ready(()) // end task
+                                    return Poll::Ready(()); // end task
                                 }
+                            }
                         }
                     }
                     // Check if this task is about to close. We pass the flag to
                     // the next state so it knows what to do.
-                    let close =
-                        if let FromTaskMessage::TaskClosed(..) = event {
-                            true
-                        } else {
-                            false
-                        };
+                    let close = if let FromTaskMessage::TaskClosed(..) = event {
+                        true
+                    } else {
+                        false
+                    };
                     match this.sender.poll_ready(cx) {
                         Poll::Pending => {
                             self.state = State::SendEvent { node, event };
-                            return Poll::Pending
+                            return Poll::Pending;
                         }
                         Poll::Ready(Ok(())) => {
                             // We assume that if `poll_ready` has succeeded, then sending the event
@@ -303,34 +332,31 @@ where
                             } else {
                                 // Since we have no node we terminate this task.
                                 assert!(close);
-                                return Poll::Ready(())
+                                return Poll::Ready(());
                             }
-                        },
+                        }
                         Poll::Ready(Err(_)) => {
                             if let Some(n) = node {
                                 this.state = State::Closing(n.close());
-                                continue 'poll
+                                continue 'poll;
                             }
                             // We can not communicate to the outside and there is no
                             // node to handle, so this is the end of this task.
-                            return Poll::Ready(())
+                            return Poll::Ready(());
                         }
                     }
                 }
-                State::Closing(mut closing) =>
-                    match Future::poll(Pin::new(&mut closing), cx) {
-                        Poll::Ready(_) =>
-                            return Poll::Ready(()), // end task
-                        Poll::Pending => {
-                            this.state = State::Closing(closing);
-                            return Poll::Pending
-                        }
+                State::Closing(mut closing) => match Future::poll(Pin::new(&mut closing), cx) {
+                    Poll::Ready(_) => return Poll::Ready(()), // end task
+                    Poll::Pending => {
+                        this.state = State::Closing(closing);
+                        return Poll::Pending;
                     }
+                },
                 // This happens if a previous poll has resolved the future.
                 // The API contract of futures is that we should not be polled again.
-                State::Undefined => panic!("`Task::poll()` called after completion.")
+                State::Undefined => panic!("`Task::poll()` called after completion."),
             }
         }
     }
 }
-

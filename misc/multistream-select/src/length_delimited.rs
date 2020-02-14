@@ -18,8 +18,8 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
-use futures::{try_ready, Async, Poll, Sink, StartSend, Stream, AsyncSink};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use futures::{try_ready, Async, AsyncSink, Poll, Sink, StartSend, Stream};
 use std::{io, u16};
 use tokio_io::{AsyncRead, AsyncWrite};
 use unsigned_varint as uvi;
@@ -50,7 +50,10 @@ pub struct LengthDelimited<R> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum ReadState {
     /// We are currently reading the length of the next frame of data.
-    ReadLength { buf: [u8; MAX_LEN_BYTES as usize], pos: usize },
+    ReadLength {
+        buf: [u8; MAX_LEN_BYTES as usize],
+        pos: usize,
+    },
     /// We are currently reading the frame of data itself.
     ReadData { len: u16, pos: usize },
 }
@@ -59,7 +62,7 @@ impl Default for ReadState {
     fn default() -> Self {
         ReadState::ReadLength {
             buf: [0; MAX_LEN_BYTES as usize],
-            pos: 0
+            pos: 0,
         }
     }
 }
@@ -125,7 +128,7 @@ impl<R> LengthDelimited<R> {
     /// submitted to the `Sink` is guaranteed to be empty.
     pub fn poll_write_buffer(&mut self) -> Poll<(), io::Error>
     where
-        R: AsyncWrite
+        R: AsyncWrite,
     {
         while !self.write_buffer.is_empty() {
             let n = try_ready!(self.inner.poll_write(&self.write_buffer));
@@ -133,7 +136,8 @@ impl<R> LengthDelimited<R> {
             if n == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::WriteZero,
-                    "Failed to write buffered frame."))
+                    "Failed to write buffered frame.",
+                ));
             }
 
             self.write_buffer.advance(n);
@@ -145,7 +149,7 @@ impl<R> LengthDelimited<R> {
 
 impl<R> Stream for LengthDelimited<R>
 where
-    R: AsyncRead
+    R: AsyncRead,
 {
     type Item = Bytes;
     type Error = io::Error;
@@ -154,7 +158,7 @@ where
         loop {
             match &mut self.read_state {
                 ReadState::ReadLength { buf, pos } => {
-                    match self.inner.read(&mut buf[*pos .. *pos + 1]) {
+                    match self.inner.read(&mut buf[*pos..*pos + 1]) {
                         Ok(0) => {
                             if *pos == 0 {
                                 return Ok(Async::Ready(None));
@@ -194,19 +198,21 @@ where
                         // See the module documentation about the max frame len.
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,
-                            "Maximum frame length exceeded"));
+                            "Maximum frame length exceeded",
+                        ));
                     }
                 }
                 ReadState::ReadData { len, pos } => {
                     match self.inner.read(&mut self.read_buffer[*pos..]) {
                         Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
                         Ok(n) => *pos += n,
-                        Err(err) =>
+                        Err(err) => {
                             if err.kind() == io::ErrorKind::WouldBlock {
-                                return Ok(Async::NotReady)
+                                return Ok(Async::NotReady);
                             } else {
-                                return Err(err)
+                                return Err(err);
                             }
+                        }
                     };
                     if *pos == *len as usize {
                         // Finished reading the frame.
@@ -234,7 +240,7 @@ where
         if self.write_buffer.len() >= MAX_FRAME_SIZE as usize {
             self.poll_complete()?;
             if self.write_buffer.len() >= MAX_FRAME_SIZE as usize {
-                return Ok(AsyncSink::NotReady(msg))
+                return Ok(AsyncSink::NotReady(msg));
             }
         }
 
@@ -242,7 +248,8 @@ where
         if len > MAX_FRAME_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Maximum frame size exceeded."))
+                "Maximum frame size exceeded.",
+            ));
         }
 
         let mut uvi_buf = uvi::encode::u16_buffer();
@@ -272,7 +279,7 @@ where
 /// frames on an underlying I/O resource combined with direct `AsyncWrite` access.
 #[derive(Debug)]
 pub struct LengthDelimitedReader<R> {
-    inner: LengthDelimited<R>
+    inner: LengthDelimited<R>,
 }
 
 impl<R> LengthDelimitedReader<R> {
@@ -308,7 +315,7 @@ impl<R> LengthDelimitedReader<R> {
 
 impl<R> Stream for LengthDelimitedReader<R>
 where
-    R: AsyncRead
+    R: AsyncRead,
 {
     type Item = Bytes;
     type Error = io::Error;
@@ -320,12 +327,12 @@ where
 
 impl<R> io::Write for LengthDelimitedReader<R>
 where
-    R: AsyncWrite
+    R: AsyncWrite,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         while !self.inner.write_buffer.is_empty() {
             if self.inner.poll_write_buffer()?.is_not_ready() {
-                return Err(io::ErrorKind::WouldBlock.into())
+                return Err(io::ErrorKind::WouldBlock.into());
             }
         }
         self.inner_mut().write(buf)
@@ -334,14 +341,14 @@ where
     fn flush(&mut self) -> io::Result<()> {
         match self.inner.poll_complete()? {
             Async::Ready(()) => Ok(()),
-            Async::NotReady => Err(io::ErrorKind::WouldBlock.into())
+            Async::NotReady => Err(io::ErrorKind::WouldBlock.into()),
         }
     }
 }
 
 impl<R> AsyncWrite for LengthDelimitedReader<R>
 where
-    R: AsyncWrite
+    R: AsyncWrite,
 {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         try_ready!(self.inner.poll_complete());
@@ -351,8 +358,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use futures::{Future, Stream};
     use crate::length_delimited::LengthDelimited;
+    use futures::{Future, Stream};
     use std::io::{Cursor, ErrorKind};
 
     #[test]
@@ -459,4 +466,3 @@ mod tests {
         }
     }
 }
-

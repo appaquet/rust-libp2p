@@ -18,11 +18,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-use futures::{future::{self, Either}, prelude::*};
+use futures::{
+    future::{self, Either},
+    prelude::*,
+};
 use libp2p_core::identity;
-use libp2p_core::upgrade::{self, Negotiated, apply_inbound, apply_outbound};
-use libp2p_core::transport::{Transport, ListenerEvent};
-use libp2p_noise::{Keypair, X25519, NoiseConfig, RemoteIdentity, NoiseError, NoiseOutput};
+use libp2p_core::transport::{ListenerEvent, Transport};
+use libp2p_core::upgrade::{self, apply_inbound, apply_outbound, Negotiated};
+use libp2p_noise::{Keypair, NoiseConfig, NoiseError, NoiseOutput, RemoteIdentity, X25519};
 use libp2p_tcp::{TcpConfig, TcpTransStream};
 use log::info;
 use quickcheck::QuickCheck;
@@ -35,7 +38,9 @@ fn core_upgrade_compat() {
     let id_keys = identity::Keypair::generate_ed25519();
     let dh_keys = Keypair::<X25519>::new().into_authentic(&id_keys).unwrap();
     let noise = NoiseConfig::xx(dh_keys).into_authenticated();
-    let _ = TcpConfig::new().upgrade(upgrade::Version::V1).authenticate(noise);
+    let _ = TcpConfig::new()
+        .upgrade(upgrade::Version::V1)
+        .authenticate(noise);
 }
 
 #[test]
@@ -52,21 +57,33 @@ fn xx() {
         let server_dh = Keypair::<X25519>::new().into_authentic(&server_id).unwrap();
         let server_transport = TcpConfig::new()
             .and_then(move |output, endpoint| {
-                upgrade::apply(output, NoiseConfig::xx(server_dh), endpoint, upgrade::Version::V1)
+                upgrade::apply(
+                    output,
+                    NoiseConfig::xx(server_dh),
+                    endpoint,
+                    upgrade::Version::V1,
+                )
             })
             .and_then(move |out, _| expect_identity(out, &client_id_public));
 
         let client_dh = Keypair::<X25519>::new().into_authentic(&client_id).unwrap();
         let client_transport = TcpConfig::new()
             .and_then(move |output, endpoint| {
-                upgrade::apply(output, NoiseConfig::xx(client_dh), endpoint, upgrade::Version::V1)
+                upgrade::apply(
+                    output,
+                    NoiseConfig::xx(client_dh),
+                    endpoint,
+                    upgrade::Version::V1,
+                )
             })
             .and_then(move |out, _| expect_identity(out, &server_id_public));
 
         run(server_transport, client_transport, messages);
         true
     }
-    QuickCheck::new().max_tests(30).quickcheck(prop as fn(Vec<Message>) -> bool)
+    QuickCheck::new()
+        .max_tests(30)
+        .quickcheck(prop as fn(Vec<Message>) -> bool)
 }
 
 #[test]
@@ -83,21 +100,33 @@ fn ix() {
         let server_dh = Keypair::<X25519>::new().into_authentic(&server_id).unwrap();
         let server_transport = TcpConfig::new()
             .and_then(move |output, endpoint| {
-                upgrade::apply(output, NoiseConfig::ix(server_dh), endpoint, upgrade::Version::V1)
+                upgrade::apply(
+                    output,
+                    NoiseConfig::ix(server_dh),
+                    endpoint,
+                    upgrade::Version::V1,
+                )
             })
             .and_then(move |out, _| expect_identity(out, &client_id_public));
 
         let client_dh = Keypair::<X25519>::new().into_authentic(&client_id).unwrap();
         let client_transport = TcpConfig::new()
             .and_then(move |output, endpoint| {
-                upgrade::apply(output, NoiseConfig::ix(client_dh), endpoint, upgrade::Version::V1)
+                upgrade::apply(
+                    output,
+                    NoiseConfig::ix(client_dh),
+                    endpoint,
+                    upgrade::Version::V1,
+                )
             })
             .and_then(move |out, _| expect_identity(out, &server_id_public));
 
         run(server_transport, client_transport, messages);
         true
     }
-    QuickCheck::new().max_tests(30).quickcheck(prop as fn(Vec<Message>) -> bool)
+    QuickCheck::new()
+        .max_tests(30)
+        .quickcheck(prop as fn(Vec<Message>) -> bool)
 }
 
 #[test]
@@ -118,8 +147,11 @@ fn ik_xx() {
                 if endpoint.is_listener() {
                     Either::Left(apply_inbound(output, NoiseConfig::ik_listener(server_dh)))
                 } else {
-                    Either::Right(apply_outbound(output, NoiseConfig::xx(server_dh),
-                        upgrade::Version::V1))
+                    Either::Right(apply_outbound(
+                        output,
+                        NoiseConfig::xx(server_dh),
+                        upgrade::Version::V1,
+                    ))
                 }
             })
             .and_then(move |out, _| expect_identity(out, &client_id_public));
@@ -129,9 +161,11 @@ fn ik_xx() {
         let client_transport = TcpConfig::new()
             .and_then(move |output, endpoint| {
                 if endpoint.is_dialer() {
-                    Either::Left(apply_outbound(output,
+                    Either::Left(apply_outbound(
+                        output,
                         NoiseConfig::ik_dialer(client_dh, server_id_public, server_dh_public),
-                        upgrade::Version::V1))
+                        upgrade::Version::V1,
+                    ))
                 } else {
                     Either::Right(apply_inbound(output, NoiseConfig::xx(client_dh)))
                 }
@@ -141,10 +175,15 @@ fn ik_xx() {
         run(server_transport, client_transport, messages);
         true
     }
-    QuickCheck::new().max_tests(30).quickcheck(prop as fn(Vec<Message>) -> bool)
+    QuickCheck::new()
+        .max_tests(30)
+        .quickcheck(prop as fn(Vec<Message>) -> bool)
 }
 
-type Output = (RemoteIdentity<X25519>, NoiseOutput<Negotiated<TcpTransStream>>);
+type Output = (
+    RemoteIdentity<X25519>,
+    NoiseOutput<Negotiated<TcpTransStream>>,
+);
 
 fn run<T, U, I>(server_transport: T, client_transport: U, messages: I)
 where
@@ -156,14 +195,15 @@ where
     U::Dial: Send + 'static,
     U::Listener: Send + 'static,
     U::ListenerUpgrade: Send + 'static,
-    I: IntoIterator<Item = Message> + Clone
+    I: IntoIterator<Item = Message> + Clone,
 {
     futures::executor::block_on(async {
         let mut server: T::Listener = server_transport
             .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
             .unwrap();
 
-        let server_address = server.try_next()
+        let server_address = server
+            .try_next()
             .await
             .expect("some event")
             .expect("no error")
@@ -172,7 +212,8 @@ where
 
         let outbound_msgs = messages.clone();
         let client_fut = async {
-            let mut client_session = client_transport.dial(server_address.clone())
+            let mut client_session = client_transport
+                .dial(server_address.clone())
                 .unwrap()
                 .await
                 .map(|(_, session)| session)
@@ -187,7 +228,8 @@ where
         };
 
         let server_fut = async {
-            let mut server_session = server.try_next()
+            let mut server_session = server
+                .try_next()
                 .await
                 .expect("some event")
                 .map(ListenerEvent::into_upgrade)
@@ -204,12 +246,15 @@ where
                     match server_session.read_exact(&mut n).await {
                         Ok(()) => u64::from_be_bytes(n),
                         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => 0,
-                        Err(e) => panic!("error reading len: {}", e)
+                        Err(e) => panic!("error reading len: {}", e),
                     }
                 };
                 info!("server: reading message ({} bytes)", len);
                 let mut server_buffer = vec![0; len.try_into().unwrap()];
-                server_session.read_exact(&mut server_buffer).await.expect("no error");
+                server_session
+                    .read_exact(&mut server_buffer)
+                    .await
+                    .expect("no error");
                 assert_eq!(server_buffer, m.0)
             }
         };
@@ -218,12 +263,13 @@ where
     })
 }
 
-fn expect_identity(output: Output, pk: &identity::PublicKey)
-    -> impl Future<Output = Result<Output, NoiseError>>
-{
+fn expect_identity(
+    output: Output,
+    pk: &identity::PublicKey,
+) -> impl Future<Output = Result<Output, NoiseError>> {
     match output.0 {
         RemoteIdentity::IdentityKey(ref k) if k == pk => future::ok(output),
-        _ => panic!("Unexpected remote identity")
+        _ => panic!("Unexpected remote identity"),
     }
 }
 

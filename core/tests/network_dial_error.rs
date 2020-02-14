@@ -23,16 +23,13 @@ mod util;
 use futures::prelude::*;
 use libp2p_core::identity;
 use libp2p_core::multiaddr::multiaddr;
-use libp2p_core::nodes::network::{Network, NetworkEvent, NetworkReachError, PeerState, UnknownPeerDialErr, IncomingError};
-use libp2p_core::{muxing::StreamMuxerBox, PeerId, Transport, upgrade};
+use libp2p_core::nodes::network::{
+    IncomingError, Network, NetworkEvent, NetworkReachError, PeerState, UnknownPeerDialErr,
+};
+use libp2p_core::{muxing::StreamMuxerBox, upgrade, PeerId, Transport};
 use libp2p_swarm::{
-    NegotiatedSubstream,
-    ProtocolsHandler,
-    KeepAlive,
-    SubstreamProtocol,
-    ProtocolsHandlerEvent,
-    ProtocolsHandlerUpgrErr,
-    protocols_handler::NodeHandlerWrapperBuilder
+    protocols_handler::NodeHandlerWrapperBuilder, KeepAlive, NegotiatedSubstream, ProtocolsHandler,
+    ProtocolsHandlerEvent, ProtocolsHandlerUpgrErr, SubstreamProtocol,
 };
 use rand::seq::SliceRandom;
 use std::{io, task::Context, task::Poll};
@@ -42,12 +39,12 @@ use std::{io, task::Context, task::Poll};
 struct TestHandler;
 
 impl ProtocolsHandler for TestHandler {
-    type InEvent = ();      // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
-    type OutEvent = ();      // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
+    type InEvent = (); // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
+    type OutEvent = (); // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
     type Error = io::Error;
     type InboundProtocol = upgrade::DeniedUpgrade;
     type OutboundProtocol = upgrade::DeniedUpgrade;
-    type OutboundOpenInfo = ();      // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
+    type OutboundOpenInfo = (); // TODO: cannot be Void (https://github.com/servo/rust-smallvec/issues/139)
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol> {
         SubstreamProtocol::new(upgrade::DeniedUpgrade)
@@ -55,26 +52,47 @@ impl ProtocolsHandler for TestHandler {
 
     fn inject_fully_negotiated_inbound(
         &mut self,
-        _: <Self::InboundProtocol as upgrade::InboundUpgrade<NegotiatedSubstream>>::Output
-    ) { panic!() }
+        _: <Self::InboundProtocol as upgrade::InboundUpgrade<NegotiatedSubstream>>::Output,
+    ) {
+        panic!()
+    }
 
     fn inject_fully_negotiated_outbound(
         &mut self,
         _: <Self::OutboundProtocol as upgrade::OutboundUpgrade<NegotiatedSubstream>>::Output,
-        _: Self::OutboundOpenInfo
-    ) { panic!() }
+        _: Self::OutboundOpenInfo,
+    ) {
+        panic!()
+    }
 
     fn inject_event(&mut self, _: Self::InEvent) {
         panic!()
     }
 
-    fn inject_dial_upgrade_error(&mut self, _: Self::OutboundOpenInfo, _: ProtocolsHandlerUpgrErr<<Self::OutboundProtocol as upgrade::OutboundUpgrade<NegotiatedSubstream>>::Error>) {
-
+    fn inject_dial_upgrade_error(
+        &mut self,
+        _: Self::OutboundOpenInfo,
+        _: ProtocolsHandlerUpgrErr<
+            <Self::OutboundProtocol as upgrade::OutboundUpgrade<NegotiatedSubstream>>::Error,
+        >,
+    ) {
     }
 
-    fn connection_keep_alive(&self) -> KeepAlive { KeepAlive::No }
+    fn connection_keep_alive(&self) -> KeepAlive {
+        KeepAlive::No
+    }
 
-    fn poll(&mut self, _: &mut Context) -> Poll<ProtocolsHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::OutEvent, Self::Error>> {
+    fn poll(
+        &mut self,
+        _: &mut Context,
+    ) -> Poll<
+        ProtocolsHandlerEvent<
+            Self::OutboundProtocol,
+            Self::OutboundOpenInfo,
+            Self::OutEvent,
+            Self::Error,
+        >,
+    > {
         Poll::Pending
     }
 }
@@ -105,7 +123,9 @@ fn deny_incoming_connec() {
         Network::new(transport, local_public_key.into(), None)
     };
 
-    swarm1.listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap()).unwrap();
+    swarm1
+        .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
+        .unwrap();
 
     let address = async_std::task::block_on(future::poll_fn(|cx| {
         if let Poll::Ready(NetworkEvent::NewListenerAddress { listen_addr, .. }) = swarm1.poll(cx) {
@@ -117,8 +137,12 @@ fn deny_incoming_connec() {
 
     swarm2
         .peer(swarm1.local_peer_id().clone())
-        .into_not_connected().unwrap()
-        .connect(address.clone(), TestHandler::default().into_node_handler_builder());
+        .into_not_connected()
+        .unwrap()
+        .connect(
+            address.clone(),
+            TestHandler::default().into_node_handler_builder(),
+        );
 
     async_std::task::block_on(future::poll_fn(|cx| -> Poll<Result<(), io::Error>> {
         match swarm1.poll(cx) {
@@ -132,23 +156,23 @@ fn deny_incoming_connec() {
                 new_state: PeerState::NotConnected,
                 peer_id,
                 multiaddr,
-                error: NetworkReachError::Transport(_)
+                error: NetworkReachError::Transport(_),
             }) => {
                 assert_eq!(peer_id, *swarm1.local_peer_id());
                 assert_eq!(multiaddr, address);
                 return Poll::Ready(Ok(()));
-            },
+            }
             Poll::Ready(_) => unreachable!(),
             Poll::Pending => (),
         }
 
         Poll::Pending
-    })).unwrap();
+    }))
+    .unwrap();
 }
 
 #[test]
 fn dial_self() {
-
     // Check whether dialing ourselves correctly fails.
     //
     // Dialing the same address we're listening should result in three events:
@@ -175,19 +199,25 @@ fn dial_self() {
         Network::new(transport, local_public_key.into(), None)
     };
 
-    swarm.listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap()).unwrap();
-
-    let (address, mut swarm) = async_std::task::block_on(
-        future::lazy(move |cx| {
-            if let Poll::Ready(NetworkEvent::NewListenerAddress { listen_addr, .. }) = swarm.poll(cx) {
-                Ok::<_, void::Void>((listen_addr, swarm))
-            } else {
-                panic!("Was expecting the listen address to be reported")
-            }
-        }))
+    swarm
+        .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
         .unwrap();
 
-    swarm.dial(address.clone(), TestHandler::default().into_node_handler_builder()).unwrap();
+    let (address, mut swarm) = async_std::task::block_on(future::lazy(move |cx| {
+        if let Poll::Ready(NetworkEvent::NewListenerAddress { listen_addr, .. }) = swarm.poll(cx) {
+            Ok::<_, void::Void>((listen_addr, swarm))
+        } else {
+            panic!("Was expecting the listen address to be reported")
+        }
+    }))
+    .unwrap();
+
+    swarm
+        .dial(
+            address.clone(),
+            TestHandler::default().into_node_handler_builder(),
+        )
+        .unwrap();
 
     let mut got_dial_err = false;
     let mut got_inc_err = false;
@@ -197,7 +227,7 @@ fn dial_self() {
                 Poll::Ready(NetworkEvent::UnknownPeerDialError {
                     multiaddr,
                     error: UnknownPeerDialErr::FoundLocalPeerId,
-                    handler: _
+                    handler: _,
                 }) => {
                     assert_eq!(multiaddr, address);
                     assert!(!got_dial_err);
@@ -205,11 +235,11 @@ fn dial_self() {
                     if got_inc_err {
                         return Poll::Ready(Ok(()));
                     }
-                },
+                }
                 Poll::Ready(NetworkEvent::IncomingConnectionError {
                     local_addr,
                     send_back_addr: _,
-                    error: IncomingError::FoundLocalPeerId
+                    error: IncomingError::FoundLocalPeerId,
                 }) => {
                     assert_eq!(address, local_addr);
                     assert!(!got_inc_err);
@@ -217,18 +247,17 @@ fn dial_self() {
                     if got_dial_err {
                         return Poll::Ready(Ok(()));
                     }
-                },
+                }
                 Poll::Ready(NetworkEvent::IncomingConnection(inc)) => {
                     assert_eq!(*inc.local_addr(), address);
                     inc.accept(TestHandler::default().into_node_handler_builder());
-                },
-                Poll::Ready(ev) => {
-                    panic!("Unexpected event: {:?}", ev)
                 }
+                Poll::Ready(ev) => panic!("Unexpected event: {:?}", ev),
                 Poll::Pending => break Poll::Pending,
             }
         }
-    })).unwrap();
+    }))
+    .unwrap();
 }
 
 #[test]
@@ -267,18 +296,23 @@ fn multiple_addresses_err() {
     };
 
     let mut addresses = Vec::new();
-    for _ in 0 .. 3 {
+    for _ in 0..3 {
         addresses.push(multiaddr![Ip4([0, 0, 0, 0]), Tcp(rand::random::<u16>())]);
     }
-    for _ in 0 .. 5 {
+    for _ in 0..5 {
         addresses.push(multiaddr![Udp(rand::random::<u16>())]);
     }
     addresses.shuffle(&mut rand::thread_rng());
 
     let target = PeerId::random();
-    swarm.peer(target.clone())
-        .into_not_connected().unwrap()
-        .connect_iter(addresses.clone(), TestHandler::default().into_node_handler_builder())
+    swarm
+        .peer(target.clone())
+        .into_not_connected()
+        .unwrap()
+        .connect_iter(
+            addresses.clone(),
+            TestHandler::default().into_node_handler_builder(),
+        )
         .unwrap();
 
     async_std::task::block_on(future::poll_fn(|cx| -> Poll<Result<(), io::Error>> {
@@ -288,7 +322,7 @@ fn multiple_addresses_err() {
                     new_state,
                     peer_id,
                     multiaddr,
-                    error: NetworkReachError::Transport(_)
+                    error: NetworkReachError::Transport(_),
                 }) => {
                     assert_eq!(peer_id, target);
                     let expected = addresses.remove(0);
@@ -298,16 +332,19 @@ fn multiple_addresses_err() {
                         return Poll::Ready(Ok(()));
                     } else {
                         match new_state {
-                            PeerState::Dialing { num_pending_addresses } => {
+                            PeerState::Dialing {
+                                num_pending_addresses,
+                            } => {
                                 assert_eq!(num_pending_addresses.get(), addresses.len());
-                            },
-                            _ => panic!()
+                            }
+                            _ => panic!(),
                         }
                     }
-                },
+                }
                 Poll::Ready(_) => unreachable!(),
                 Poll::Pending => break Poll::Pending,
             }
         }
-    })).unwrap();
+    }))
+    .unwrap();
 }

@@ -18,18 +18,27 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+use super::{
+    task::{FromTaskMessage, Task, ToTaskMessage},
+    Error, TaskId,
+};
 use crate::{
-    Executor, PeerId,
     muxing::StreamMuxer,
     nodes::{
         handled_node::{HandledNode, IntoNodeHandler, NodeHandler},
-        node::Substream
-    }
+        node::Substream,
+    },
+    Executor, PeerId,
 };
 use fnv::FnvHashMap;
-use futures::{prelude::*, channel::mpsc, stream::FuturesUnordered};
-use std::{collections::hash_map::{Entry, OccupiedEntry}, error, fmt, pin::Pin, task::Context, task::Poll};
-use super::{TaskId, task::{Task, FromTaskMessage, ToTaskMessage}, Error};
+use futures::{channel::mpsc, prelude::*, stream::FuturesUnordered};
+use std::{
+    collections::hash_map::{Entry, OccupiedEntry},
+    error, fmt,
+    pin::Pin,
+    task::Context,
+    task::Poll,
+};
 
 // Implementor notes
 // =================
@@ -75,12 +84,12 @@ pub struct Manager<I, O, H, E, HE, T, C = PeerId> {
     events_tx: mpsc::Sender<(FromTaskMessage<O, H, E, HE, C>, TaskId)>,
 
     /// Receiver side for the events.
-    events_rx: mpsc::Receiver<(FromTaskMessage<O, H, E, HE, C>, TaskId)>
+    events_rx: mpsc::Receiver<(FromTaskMessage<O, H, E, HE, C>, TaskId)>,
 }
 
 impl<I, O, H, E, HE, T, C> fmt::Debug for Manager<I, O, H, E, HE, T, C>
 where
-    T: fmt::Debug
+    T: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_map()
@@ -113,7 +122,7 @@ pub enum Event<'a, I, O, H, E, HE, T, C = PeerId> {
         result: Error<E, HE>,
         /// If the task closed before reaching the node, this contains
         /// the handler that was passed to `add_reach_attempt`.
-        handler: Option<H>
+        handler: Option<H>,
     },
 
     /// A task has successfully connected to a node.
@@ -121,7 +130,7 @@ pub enum Event<'a, I, O, H, E, HE, T, C = PeerId> {
         /// The task that succeeded.
         task: TaskEntry<'a, I, T>,
         /// Identifier of the node.
-        conn_info: C
+        conn_info: C,
     },
 
     /// A task has produced an event.
@@ -129,8 +138,8 @@ pub enum Event<'a, I, O, H, E, HE, T, C = PeerId> {
         /// The task that produced the event.
         task: TaskEntry<'a, I, T>,
         /// The produced event.
-        event: O
-    }
+        event: O,
+    },
 }
 
 impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
@@ -144,7 +153,7 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
             executor,
             local_spawns: FuturesUnordered::new(),
             events_tx: tx,
-            events_rx: rx
+            events_rx: rx,
         }
     }
 
@@ -156,7 +165,9 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
     where
         F: Future<Output = Result<(C, M), E>> + Send + 'static,
         H: IntoNodeHandler<C> + Send + 'static,
-        H::Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O, Error = HE> + Send + 'static,
+        H::Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O, Error = HE>
+            + Send
+            + 'static,
         E: error::Error + Send + 'static,
         HE: error::Error + Send + 'static,
         I: Send + 'static,
@@ -164,15 +175,27 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
         <H::Handler as NodeHandler>::OutboundOpenInfo: Send + 'static,
         M: StreamMuxer + Send + Sync + 'static,
         M::OutboundSubstream: Send + 'static,
-        C: Send + 'static
+        C: Send + 'static,
     {
         let task_id = self.next_task_id;
         self.next_task_id.0 += 1;
 
         let (tx, rx) = mpsc::channel(4);
-        self.tasks.insert(task_id, TaskInfo { sender: tx, user_data });
+        self.tasks.insert(
+            task_id,
+            TaskInfo {
+                sender: tx,
+                user_data,
+            },
+        );
 
-        let task = Box::pin(Task::new(task_id, self.events_tx.clone(), rx, future, handler));
+        let task = Box::pin(Task::new(
+            task_id,
+            self.events_tx.clone(),
+            rx,
+            future,
+            handler,
+        ));
         if let Some(executor) = &self.executor {
             executor.exec(task as Pin<Box<_>>)
         } else {
@@ -190,7 +213,9 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
     pub fn add_connection<M, Handler>(&mut self, user_data: T, muxer: M, handler: Handler) -> TaskId
     where
         H: IntoNodeHandler<C, Handler = Handler> + Send + 'static,
-        Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O, Error = HE> + Send + 'static,
+        Handler: NodeHandler<Substream = Substream<M>, InEvent = I, OutEvent = O, Error = HE>
+            + Send
+            + 'static,
         E: error::Error + Send + 'static,
         HE: error::Error + Send + 'static,
         I: Send + 'static,
@@ -198,16 +223,26 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
         <H::Handler as NodeHandler>::OutboundOpenInfo: Send + 'static,
         M: StreamMuxer + Send + Sync + 'static,
         M::OutboundSubstream: Send + 'static,
-        C: Send + 'static
+        C: Send + 'static,
     {
         let task_id = self.next_task_id;
         self.next_task_id.0 += 1;
 
         let (tx, rx) = mpsc::channel(4);
-        self.tasks.insert(task_id, TaskInfo { sender: tx, user_data });
+        self.tasks.insert(
+            task_id,
+            TaskInfo {
+                sender: tx,
+                user_data,
+            },
+        );
 
-        let task: Task<Pin<Box<futures::future::Pending<_>>>, _, _, _, _, _, _> =
-            Task::node(task_id, self.events_tx.clone(), rx, HandledNode::new(muxer, handler));
+        let task: Task<Pin<Box<futures::future::Pending<_>>>, _, _, _, _, _, _> = Task::node(
+            task_id,
+            self.events_tx.clone(),
+            rx,
+            HandledNode::new(muxer, handler),
+        );
 
         if let Some(executor) = &self.executor {
             executor.exec(Box::pin(task))
@@ -225,7 +260,7 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
     #[must_use]
     pub fn poll_broadcast(&mut self, event: &I, cx: &mut Context) -> Poll<()>
     where
-        I: Clone
+        I: Clone,
     {
         for task in self.tasks.values_mut() {
             if let Poll::Pending = task.sender.poll_ready(cx) {
@@ -236,10 +271,11 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
         for task in self.tasks.values_mut() {
             let msg = ToTaskMessage::HandlerEvent(event.clone());
             match task.sender.start_send(msg) {
-                Ok(()) => {},
-                Err(ref err) if err.is_full() =>
-                    panic!("poll_ready returned Poll::Ready just above; qed"),
-                Err(_) => {},
+                Ok(()) => {}
+                Err(ref err) if err.is_full() => {
+                    panic!("poll_ready returned Poll::Ready just above; qed")
+                }
+                Err(_) => {}
             }
         }
 
@@ -273,7 +309,7 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
                     // `close()` on this task earlier. Therefore no new event should be generated
                     // for this task.
                     if self.tasks.contains_key(&task_id) {
-                        break (message, task_id)
+                        break (message, task_id);
                     }
                 }
                 Poll::Pending => return Poll::Pending,
@@ -282,29 +318,29 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
         };
 
         Poll::Ready(match message {
-            FromTaskMessage::NodeEvent(event) =>
-                Event::NodeEvent {
-                    task: match self.tasks.entry(task_id) {
-                        Entry::Occupied(inner) => TaskEntry { inner },
-                        Entry::Vacant(_) => panic!("poll_inner only returns valid TaskIds; QED")
-                    },
-                    event
+            FromTaskMessage::NodeEvent(event) => Event::NodeEvent {
+                task: match self.tasks.entry(task_id) {
+                    Entry::Occupied(inner) => TaskEntry { inner },
+                    Entry::Vacant(_) => panic!("poll_inner only returns valid TaskIds; QED"),
                 },
-            FromTaskMessage::NodeReached(conn_info) =>
-                Event::NodeReached {
-                    task: match self.tasks.entry(task_id) {
-                        Entry::Occupied(inner) => TaskEntry { inner },
-                        Entry::Vacant(_) => panic!("poll_inner only returns valid TaskIds; QED")
-                    },
-                    conn_info
+                event,
+            },
+            FromTaskMessage::NodeReached(conn_info) => Event::NodeReached {
+                task: match self.tasks.entry(task_id) {
+                    Entry::Occupied(inner) => TaskEntry { inner },
+                    Entry::Vacant(_) => panic!("poll_inner only returns valid TaskIds; QED"),
                 },
+                conn_info,
+            },
             FromTaskMessage::TaskClosed(result, handler) => {
-                let entry = self.tasks.remove(&task_id)
+                let entry = self
+                    .tasks
+                    .remove(&task_id)
                     .expect("poll_inner only returns valid TaskIds; QED");
                 Event::TaskClosed {
                     task: ClosedTask::new(task_id, entry.sender, entry.user_data),
                     result,
-                    handler
+                    handler,
                 }
             }
         })
@@ -313,7 +349,7 @@ impl<I, O, H, E, HE, T, C> Manager<I, O, H, E, HE, T, C> {
 
 /// Access to a task in the collection.
 pub struct TaskEntry<'a, E, T> {
-    inner: OccupiedEntry<'a, TaskId, TaskInfo<E, T>>
+    inner: OccupiedEntry<'a, TaskId, TaskInfo<E, T>>,
 }
 
 impl<'a, E, T> TaskEntry<'a, E, T> {
@@ -377,9 +413,9 @@ impl<'a, E, T> TaskEntry<'a, E, T> {
         // but the local state hasn't been updated yet because we haven't been polled in the
         // meanwhile.
         match self.inner.get_mut().sender.start_send(msg) {
-            Ok(()) => {},
-            Err(ref err) if err.is_full() => {},        // TODO: somehow report to user?
-            Err(_) => {},
+            Ok(()) => {}
+            Err(ref err) if err.is_full() => {} // TODO: somehow report to user?
+            Err(_) => {}
         }
     }
 
@@ -419,13 +455,17 @@ pub struct ClosedTask<E, T> {
     sender: mpsc::Sender<ToTaskMessage<E>>,
 
     /// The data provided by the user.
-    user_data: T
+    user_data: T,
 }
 
 impl<E, T> ClosedTask<E, T> {
     /// Create a new `ClosedTask` value.
     fn new(id: TaskId, sender: mpsc::Sender<ToTaskMessage<E>>, user_data: T) -> Self {
-        Self { id, sender, user_data }
+        Self {
+            id,
+            sender,
+            user_data,
+        }
     }
 
     /// Returns the task id.

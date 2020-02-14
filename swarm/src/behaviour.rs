@@ -19,7 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 use crate::protocols_handler::{IntoProtocolsHandler, ProtocolsHandler};
-use libp2p_core::{ConnectedPoint, Multiaddr, PeerId, nodes::ListenerId};
+use libp2p_core::{nodes::ListenerId, ConnectedPoint, Multiaddr, PeerId};
 use std::{error, task::Context, task::Poll};
 
 /// A behaviour for the network. Allows customizing the swarm.
@@ -93,7 +93,12 @@ pub trait NetworkBehaviour: Send + 'static {
     /// The default implementation of this method calls `inject_disconnected` followed with
     /// `inject_connected`. This is a logically safe way to implement this behaviour. However, you
     /// may want to overwrite this method in the situations where this isn't appropriate.
-    fn inject_replaced(&mut self, peer_id: PeerId, closed_endpoint: ConnectedPoint, new_endpoint: ConnectedPoint) {
+    fn inject_replaced(
+        &mut self,
+        peer_id: PeerId,
+        closed_endpoint: ConnectedPoint,
+        new_endpoint: ConnectedPoint,
+    ) {
         self.inject_disconnected(&peer_id, closed_endpoint);
         self.inject_connected(peer_id, new_endpoint);
     }
@@ -106,14 +111,19 @@ pub trait NetworkBehaviour: Send + 'static {
     fn inject_node_event(
         &mut self,
         peer_id: PeerId,
-        event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent
+        event: <<Self::ProtocolsHandler as IntoProtocolsHandler>::Handler as ProtocolsHandler>::OutEvent,
     );
 
     /// Indicates to the behaviour that we tried to reach an address, but failed.
     ///
     /// If we were trying to reach a specific node, its ID is passed as parameter. If this is the
     /// last address to attempt for the given node, then `inject_dial_failure` is called afterwards.
-    fn inject_addr_reach_failure(&mut self, _peer_id: Option<&PeerId>, _addr: &Multiaddr, _error: &dyn error::Error) {
+    fn inject_addr_reach_failure(
+        &mut self,
+        _peer_id: Option<&PeerId>,
+        _addr: &Multiaddr,
+        _error: &dyn error::Error,
+    ) {
     }
 
     /// Indicates to the behaviour that we tried to dial all the addresses known for a node, but
@@ -121,29 +131,24 @@ pub trait NetworkBehaviour: Send + 'static {
     ///
     /// The `peer_id` is guaranteed to be in a disconnected state. In other words,
     /// `inject_connected` has not been called, or `inject_disconnected` has been called since then.
-    fn inject_dial_failure(&mut self, _peer_id: &PeerId) {
-    }
+    fn inject_dial_failure(&mut self, _peer_id: &PeerId) {}
 
     /// Indicates to the behaviour that we have started listening on a new multiaddr.
-    fn inject_new_listen_addr(&mut self, _addr: &Multiaddr) {
-    }
+    fn inject_new_listen_addr(&mut self, _addr: &Multiaddr) {}
 
     /// Indicates to the behaviour that a new multiaddr we were listening on has expired,
     /// which means that we are no longer listening in it.
-    fn inject_expired_listen_addr(&mut self, _addr: &Multiaddr) {
-    }
+    fn inject_expired_listen_addr(&mut self, _addr: &Multiaddr) {}
 
     /// Indicates to the behaviour that we have discovered a new external address for us.
-    fn inject_new_external_addr(&mut self, _addr: &Multiaddr) {
-    }
+    fn inject_new_external_addr(&mut self, _addr: &Multiaddr) {}
 
     /// A listener experienced an error.
     fn inject_listener_error(&mut self, _id: ListenerId, _err: &(dyn std::error::Error + 'static)) {
     }
 
     /// A listener closed.
-    fn inject_listener_closed(&mut self, _id: ListenerId) {
-    }
+    fn inject_listener_closed(&mut self, _id: ListenerId) {}
 
     /// Polls for things that swarm should do.
     ///

@@ -86,7 +86,7 @@ impl Record {
     /// Creates a new record for insertion into the DHT.
     pub fn new<K>(key: K, value: Vec<u8>) -> Self
     where
-        K: Into<Key>
+        K: Into<Key>,
     {
         Record {
             key: key.into(),
@@ -125,10 +125,12 @@ impl ProviderRecord {
     /// Creates a new provider record for insertion into a `RecordStore`.
     pub fn new<K>(key: K, provider: PeerId) -> Self
     where
-        K: Into<Key>
+        K: Into<Key>,
     {
         ProviderRecord {
-            key: key.into(), provider, expires: None
+            key: key.into(),
+            provider,
+            expires: None,
         }
     }
 
@@ -141,8 +143,8 @@ impl ProviderRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quickcheck::*;
     use multihash::Hash::SHA2256;
+    use quickcheck::*;
     use rand::Rng;
     use std::time::Duration;
 
@@ -157,7 +159,11 @@ mod tests {
             Record {
                 key: Key::arbitrary(g),
                 value: Vec::arbitrary(g),
-                publisher: if g.gen() { Some(PeerId::random()) } else { None },
+                publisher: if g.gen() {
+                    Some(PeerId::random())
+                } else {
+                    None
+                },
                 expires: if g.gen() {
                     Some(Instant::now() + Duration::from_secs(g.gen_range(0, 60)))
                 } else {
@@ -181,4 +187,3 @@ mod tests {
         }
     }
 }
-

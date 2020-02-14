@@ -22,13 +22,13 @@
 
 #![cfg(test)]
 
-use crate::{Version, NegotiationError};
 use crate::dialer_select::{dialer_select_proto_parallel, dialer_select_proto_serial};
 use crate::{dialer_select_proto, listener_select_proto};
+use crate::{NegotiationError, Version};
 use futures::prelude::*;
 use tokio::runtime::current_thread::Runtime;
-use tokio_tcp::{TcpListener, TcpStream};
 use tokio_io::io as nio;
+use tokio_tcp::{TcpListener, TcpStream};
 
 #[test]
 fn select_proto_basic() {
@@ -45,9 +45,7 @@ fn select_proto_basic() {
                 let protos = vec![b"/proto1", b"/proto2"];
                 listener_select_proto(connec, protos)
             })
-            .and_then(|(proto, io)| {
-                nio::write_all(io, b"pong").from_err().map(move |_| proto)
-            });
+            .and_then(|(proto, io)| nio::write_all(io, b"pong").from_err().map(move |_| proto));
 
         let client = TcpStream::connect(&listener_addr)
             .from_err()
@@ -56,7 +54,9 @@ fn select_proto_basic() {
                 dialer_select_proto(connec, protos, version)
             })
             .and_then(|(proto, io)| {
-                nio::write_all(io, b"ping").from_err().map(move |(io, _)| (proto, io))
+                nio::write_all(io, b"ping")
+                    .from_err()
+                    .map(move |(io, _)| (proto, io))
             })
             .and_then(|(proto, io)| {
                 nio::read_exact(io, [0; 4]).from_err().map(move |(_, msg)| {
@@ -66,8 +66,7 @@ fn select_proto_basic() {
             });
 
         let mut rt = Runtime::new().unwrap();
-        let (dialer_chosen, listener_chosen) =
-            rt.block_on(client.join(server)).unwrap();
+        let (dialer_chosen, listener_chosen) = rt.block_on(client.join(server)).unwrap();
 
         assert_eq!(dialer_chosen, b"/proto2");
         assert_eq!(listener_chosen, b"/proto2");
@@ -139,8 +138,7 @@ fn select_proto_parallel() {
             .and_then(|(proto, io)| io.complete().map(move |_| proto));
 
         let mut rt = Runtime::new().unwrap();
-        let (dialer_chosen, listener_chosen) =
-            rt.block_on(client.join(server)).unwrap();
+        let (dialer_chosen, listener_chosen) = rt.block_on(client.join(server)).unwrap();
 
         assert_eq!(dialer_chosen, b"/proto2");
         assert_eq!(listener_chosen, b"/proto2");
@@ -176,8 +174,7 @@ fn select_proto_serial() {
             .and_then(|(proto, io)| io.complete().map(move |_| proto));
 
         let mut rt = Runtime::new().unwrap();
-        let (dialer_chosen, listener_chosen) =
-            rt.block_on(client.join(server)).unwrap();
+        let (dialer_chosen, listener_chosen) = rt.block_on(client.join(server)).unwrap();
 
         assert_eq!(dialer_chosen, b"/proto2");
         assert_eq!(listener_chosen, b"/proto2");

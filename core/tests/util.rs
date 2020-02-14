@@ -1,4 +1,3 @@
-
 #![allow(dead_code)]
 
 use futures::prelude::*;
@@ -12,7 +11,7 @@ pub struct CloseMuxer<M> {
 impl<M> CloseMuxer<M> {
     pub fn new(m: M) -> CloseMuxer<M> {
         CloseMuxer {
-            state: CloseMuxerState::Close(m)
+            state: CloseMuxerState::Close(m),
         }
     }
 }
@@ -25,7 +24,7 @@ pub enum CloseMuxerState<M> {
 impl<M> Future for CloseMuxer<M>
 where
     M: StreamMuxer,
-    M::Error: From<std::io::Error>
+    M::Error: From<std::io::Error>,
 {
     type Output = Result<M, M::Error>;
 
@@ -35,15 +34,14 @@ where
                 CloseMuxerState::Close(muxer) => {
                     if !muxer.close(cx)?.is_ready() {
                         self.state = CloseMuxerState::Close(muxer);
-                        return Poll::Pending
+                        return Poll::Pending;
                     }
-                    return Poll::Ready(Ok(muxer))
+                    return Poll::Ready(Ok(muxer));
                 }
-                CloseMuxerState::Done => panic!()
+                CloseMuxerState::Done => panic!(),
             }
         }
     }
 }
 
-impl<M> Unpin for CloseMuxer<M> {
-}
+impl<M> Unpin for CloseMuxer<M> {}

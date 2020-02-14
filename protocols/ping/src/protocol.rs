@@ -70,7 +70,8 @@ where
                 socket.write_all(&payload).await?;
             }
             Ok(())
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -95,9 +96,13 @@ where
             if recv_payload == payload {
                 Ok(started.elapsed())
             } else {
-                Err(io::Error::new(io::ErrorKind::InvalidData, "Ping payload mismatch"))
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Ping payload mismatch",
+                ))
             }
-        }.boxed()
+        }
+        .boxed()
     }
 }
 
@@ -106,13 +111,9 @@ mod tests {
     use super::Ping;
     use futures::prelude::*;
     use libp2p_core::{
-        upgrade,
         multiaddr::multiaddr,
-        transport::{
-            Transport,
-            ListenerEvent,
-            memory::MemoryTransport
-        }
+        transport::{memory::MemoryTransport, ListenerEvent, Transport},
+        upgrade,
     };
     use rand::{thread_rng, Rng};
     use std::time::Duration;
@@ -128,7 +129,7 @@ mod tests {
             } else {
                 panic!("MemoryTransport not listening on an address!");
             };
-        
+
         async_std::task::spawn(async move {
             let listener_event = listener.next().await.unwrap();
             let (listener_upgrade, _) = listener_event.unwrap().into_upgrade().unwrap();
@@ -138,7 +139,9 @@ mod tests {
 
         async_std::task::block_on(async move {
             let c = MemoryTransport.dial(listener_addr).unwrap().await.unwrap();
-            let rtt = upgrade::apply_outbound(c, Ping::default(), upgrade::Version::V1).await.unwrap();
+            let rtt = upgrade::apply_outbound(c, Ping::default(), upgrade::Version::V1)
+                .await
+                .unwrap();
             assert!(rtt > Duration::from_secs(0));
         });
     }

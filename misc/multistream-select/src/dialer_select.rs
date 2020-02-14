@@ -20,12 +20,12 @@
 
 //! Protocol negotiation strategies for the peer acting as the dialer.
 
-use crate::protocol::{Protocol, ProtocolError, MessageIO, Message, Version};
+use crate::protocol::{Message, MessageIO, Protocol, ProtocolError, Version};
+use crate::{Negotiated, NegotiationError};
 use futures::{future::Either, prelude::*};
 use log::debug;
-use std::{io, iter, mem, convert::TryFrom};
+use std::{convert::TryFrom, io, iter, mem};
 use tokio_io::{AsyncRead, AsyncWrite};
-use crate::{Negotiated, NegotiationError};
 
 /// Returns a `Future` that negotiates a protocol on the given I/O stream
 /// for a peer acting as the _dialer_ (or _initiator_).
@@ -50,12 +50,12 @@ use crate::{Negotiated, NegotiationError};
 pub fn dialer_select_proto<R, I>(
     inner: R,
     protocols: I,
-    version: Version
+    version: Version,
 ) -> DialerSelectFuture<R, I::IntoIter>
 where
     R: AsyncRead + AsyncWrite,
     I: IntoIterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     let iter = protocols.into_iter();
     // We choose between the "serial" and "parallel" strategies based on the number of protocols.
@@ -81,12 +81,12 @@ pub type DialerSelectFuture<R, I> = Either<DialerSelectSeq<R, I>, DialerSelectPa
 pub fn dialer_select_proto_serial<R, I>(
     inner: R,
     protocols: I,
-    version: Version
+    version: Version,
 ) -> DialerSelectSeq<R, I::IntoIter>
 where
     R: AsyncRead + AsyncWrite,
     I: IntoIterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     let protocols = protocols.into_iter().peekable();
     DialerSelectSeq {
@@ -94,7 +94,7 @@ where
         protocols,
         state: SeqState::SendHeader {
             io: MessageIO::new(inner),
-        }
+        },
     }
 }
 
@@ -110,20 +110,20 @@ where
 pub fn dialer_select_proto_parallel<R, I>(
     inner: R,
     protocols: I,
-    version: Version
+    version: Version,
 ) -> DialerSelectPar<R, I::IntoIter>
 where
     R: AsyncRead + AsyncWrite,
     I: IntoIterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     let protocols = protocols.into_iter();
     DialerSelectPar {
         version,
         protocols,
         state: ParState::SendHeader {
-            io: MessageIO::new(inner)
-        }
+            io: MessageIO::new(inner),
+        },
     }
 }
 
@@ -133,7 +133,7 @@ pub struct DialerSelectSeq<R, I>
 where
     R: AsyncRead + AsyncWrite,
     I: Iterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     // TODO: It would be nice if eventually N = I::Item = Protocol.
     protocols: iter::Peekable<I>,
@@ -144,20 +144,20 @@ where
 enum SeqState<R, N>
 where
     R: AsyncRead + AsyncWrite,
-    N: AsRef<[u8]>
+    N: AsRef<[u8]>,
 {
-    SendHeader { io: MessageIO<R>, },
+    SendHeader { io: MessageIO<R> },
     SendProtocol { io: MessageIO<R>, protocol: N },
     FlushProtocol { io: MessageIO<R>, protocol: N },
     AwaitProtocol { io: MessageIO<R>, protocol: N },
-    Done
+    Done,
 }
 
 impl<R, I> Future for DialerSelectSeq<R, I>
 where
     R: AsyncRead + AsyncWrite,
     I: Iterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     type Item = (I::Item, Negotiated<R>);
     type Error = NegotiationError;
@@ -168,7 +168,7 @@ where
                 SeqState::SendHeader { mut io } => {
                     if io.start_send(Message::Header(self.version))?.is_not_ready() {
                         self.state = SeqState::SendHeader { io };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     let protocol = self.protocols.next().ok_or(NegotiationError::Failed)?;
                     self.state = SeqState::SendProtocol { io, protocol };
@@ -177,7 +177,7 @@ where
                     let p = Protocol::try_from(protocol.as_ref())?;
                     if io.start_send(Message::Protocol(p.clone()))?.is_not_ready() {
                         self.state = SeqState::SendProtocol { io, protocol };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     debug!("Dialer: Proposed protocol: {}", p);
                     if self.protocols.peek().is_some() {
@@ -188,7 +188,7 @@ where
                             Version::V1Lazy => {
                                 debug!("Dialer: Expecting proposed protocol: {}", p);
                                 let io = Negotiated::expecting(io.into_reader(), p, self.version);
-                                return Ok(Async::Ready((protocol, io)))
+                                return Ok(Async::Ready((protocol, io)));
                             }
                         }
                     }
@@ -196,7 +196,7 @@ where
                 SeqState::FlushProtocol { mut io, protocol } => {
                     if io.poll_complete()?.is_not_ready() {
                         self.state = SeqState::FlushProtocol { io, protocol };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     self.state = SeqState::AwaitProtocol { io, protocol }
                 }
@@ -204,11 +204,13 @@ where
                     let msg = match io.poll()? {
                         Async::NotReady => {
                             self.state = SeqState::AwaitProtocol { io, protocol };
-                            return Ok(Async::NotReady)
+                            return Ok(Async::NotReady);
                         }
-                        Async::Ready(None) =>
-                            return Err(NegotiationError::from(
-                                io::Error::from(io::ErrorKind::UnexpectedEof))),
+                        Async::Ready(None) => {
+                            return Err(NegotiationError::from(io::Error::from(
+                                io::ErrorKind::UnexpectedEof,
+                            )))
+                        }
                         Async::Ready(Some(msg)) => msg,
                     };
 
@@ -220,19 +222,20 @@ where
                             debug!("Dialer: Received confirmation for protocol: {}", p);
                             let (io, remaining) = io.into_inner();
                             let io = Negotiated::completed(io, remaining);
-                            return Ok(Async::Ready((protocol, io)))
+                            return Ok(Async::Ready((protocol, io)));
                         }
                         Message::NotAvailable => {
-                            debug!("Dialer: Received rejection of protocol: {}",
-                                String::from_utf8_lossy(protocol.as_ref()));
-                            let protocol = self.protocols.next()
-                                .ok_or(NegotiationError::Failed)?;
+                            debug!(
+                                "Dialer: Received rejection of protocol: {}",
+                                String::from_utf8_lossy(protocol.as_ref())
+                            );
+                            let protocol = self.protocols.next().ok_or(NegotiationError::Failed)?;
                             self.state = SeqState::SendProtocol { io, protocol }
                         }
-                        _ => return Err(ProtocolError::InvalidMessage.into())
+                        _ => return Err(ProtocolError::InvalidMessage.into()),
                     }
                 }
-                SeqState::Done => panic!("SeqState::poll called after completion")
+                SeqState::Done => panic!("SeqState::poll called after completion"),
             }
         }
     }
@@ -245,7 +248,7 @@ pub struct DialerSelectPar<R, I>
 where
     R: AsyncRead + AsyncWrite,
     I: Iterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     protocols: I,
     state: ParState<R, I::Item>,
@@ -255,21 +258,21 @@ where
 enum ParState<R, N>
 where
     R: AsyncRead + AsyncWrite,
-    N: AsRef<[u8]>
+    N: AsRef<[u8]>,
 {
     SendHeader { io: MessageIO<R> },
     SendProtocolsRequest { io: MessageIO<R> },
     Flush { io: MessageIO<R> },
     RecvProtocols { io: MessageIO<R> },
     SendProtocol { io: MessageIO<R>, protocol: N },
-    Done
+    Done,
 }
 
 impl<R, I> Future for DialerSelectPar<R, I>
 where
     R: AsyncRead + AsyncWrite,
     I: Iterator,
-    I::Item: AsRef<[u8]>
+    I::Item: AsRef<[u8]>,
 {
     type Item = (I::Item, Negotiated<R>);
     type Error = NegotiationError;
@@ -280,14 +283,14 @@ where
                 ParState::SendHeader { mut io } => {
                     if io.start_send(Message::Header(self.version))?.is_not_ready() {
                         self.state = ParState::SendHeader { io };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     self.state = ParState::SendProtocolsRequest { io };
                 }
                 ParState::SendProtocolsRequest { mut io } => {
                     if io.start_send(Message::ListProtocols)?.is_not_ready() {
                         self.state = ParState::SendProtocolsRequest { io };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     debug!("Dialer: Requested supported protocols.");
                     self.state = ParState::Flush { io }
@@ -295,7 +298,7 @@ where
                 ParState::Flush { mut io } => {
                     if io.poll_complete()?.is_not_ready() {
                         self.state = ParState::Flush { io };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     self.state = ParState::RecvProtocols { io }
                 }
@@ -303,11 +306,13 @@ where
                     let msg = match io.poll()? {
                         Async::NotReady => {
                             self.state = ParState::RecvProtocols { io };
-                            return Ok(Async::NotReady)
+                            return Ok(Async::NotReady);
                         }
-                        Async::Ready(None) =>
-                            return Err(NegotiationError::from(
-                                io::Error::from(io::ErrorKind::UnexpectedEof))),
+                        Async::Ready(None) => {
+                            return Err(NegotiationError::from(io::Error::from(
+                                io::ErrorKind::UnexpectedEof,
+                            )))
+                        }
                         Async::Ready(Some(msg)) => msg,
                     };
 
@@ -316,30 +321,32 @@ where
                             self.state = ParState::RecvProtocols { io }
                         }
                         Message::Protocols(supported) => {
-                            let protocol = self.protocols.by_ref()
-                                .find(|p| supported.iter().any(|s|
-                                    s.as_ref() == p.as_ref()))
+                            let protocol = self
+                                .protocols
+                                .by_ref()
+                                .find(|p| supported.iter().any(|s| s.as_ref() == p.as_ref()))
                                 .ok_or(NegotiationError::Failed)?;
-                            debug!("Dialer: Found supported protocol: {}",
-                                String::from_utf8_lossy(protocol.as_ref()));
+                            debug!(
+                                "Dialer: Found supported protocol: {}",
+                                String::from_utf8_lossy(protocol.as_ref())
+                            );
                             self.state = ParState::SendProtocol { io, protocol };
                         }
-                        _ => return Err(ProtocolError::InvalidMessage.into())
+                        _ => return Err(ProtocolError::InvalidMessage.into()),
                     }
                 }
                 ParState::SendProtocol { mut io, protocol } => {
                     let p = Protocol::try_from(protocol.as_ref())?;
                     if io.start_send(Message::Protocol(p.clone()))?.is_not_ready() {
                         self.state = ParState::SendProtocol { io, protocol };
-                        return Ok(Async::NotReady)
+                        return Ok(Async::NotReady);
                     }
                     debug!("Dialer: Expecting proposed protocol: {}", p);
                     let io = Negotiated::expecting(io.into_reader(), p, self.version);
-                    return Ok(Async::Ready((protocol, io)))
+                    return Ok(Async::Ready((protocol, io)));
                 }
-                ParState::Done => panic!("ParState::poll called after completion")
+                ParState::Done => panic!("ParState::poll called after completion"),
             }
         }
     }
 }
-

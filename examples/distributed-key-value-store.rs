@@ -34,15 +34,15 @@ use futures::prelude::*;
 use libp2p::kad::record::store::MemoryStore;
 use libp2p::kad::{record::Key, Kademlia, KademliaEvent, PutRecordOk, Quorum, Record};
 use libp2p::{
-    NetworkBehaviour,
-    PeerId,
-    Swarm,
-    build_development_transport,
-    identity,
+    build_development_transport, identity,
     mdns::{Mdns, MdnsEvent},
-    swarm::NetworkBehaviourEventProcess
+    swarm::NetworkBehaviourEventProcess,
+    NetworkBehaviour, PeerId, Swarm,
 };
-use std::{error::Error, task::{Context, Poll}};
+use std::{
+    error::Error,
+    task::{Context, Poll},
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     #[derive(NetworkBehaviour)]
     struct MyBehaviour {
         kademlia: Kademlia<MemoryStore>,
-        mdns: Mdns
+        mdns: Mdns,
     }
 
     impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
@@ -125,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             match stdin.try_poll_next_unpin(cx)? {
                 Poll::Ready(Some(line)) => handle_input_line(&mut swarm.kademlia, line),
                 Poll::Ready(None) => panic!("Stdin closed"),
-                Poll::Pending => break
+                Poll::Pending => break,
             }
         }
         loop {
@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             listening = true;
                         }
                     }
-                    break
+                    break;
                 }
             }
         }

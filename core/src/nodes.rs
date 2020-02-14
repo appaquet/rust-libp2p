@@ -28,14 +28,13 @@
 
 pub mod collection;
 pub mod handled_node;
-pub mod tasks;
 pub mod listeners;
-pub mod node;
 pub mod network;
+pub mod node;
+pub mod tasks;
 
 pub use collection::ConnectionInfo;
-pub use node::Substream;
-pub use handled_node::{NodeHandlerEvent, NodeHandlerEndpoint};
-pub use network::{Peer, Network, NetworkEvent};
+pub use handled_node::{NodeHandlerEndpoint, NodeHandlerEvent};
 pub use listeners::ListenerId;
-
+pub use network::{Network, NetworkEvent, Peer};
+pub use node::Substream;

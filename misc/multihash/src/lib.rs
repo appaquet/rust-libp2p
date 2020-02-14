@@ -191,22 +191,31 @@ impl digest::Reset for Blake2s128 {
 
 /// Represents a valid multihash.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Multihash { bytes: Bytes }
+pub struct Multihash {
+    bytes: Bytes,
+}
 
 impl Multihash {
     /// Verifies whether `bytes` contains a valid multihash, and if so returns a `Multihash`.
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Multihash, DecodeOwnedError> {
         if let Err(err) = MultihashRef::from_slice(&bytes) {
-            return Err(DecodeOwnedError { error: err, data: bytes });
+            return Err(DecodeOwnedError {
+                error: err,
+                data: bytes,
+            });
         }
-        Ok(Multihash { bytes: Bytes::from(bytes) })
+        Ok(Multihash {
+            bytes: Bytes::from(bytes),
+        })
     }
 
     /// Generates a random `Multihash` from a cryptographically secure PRNG.
     pub fn random(hash: Hash) -> Multihash {
         let (offset, mut bytes) = encode_hash(hash);
-        rand::thread_rng().fill_bytes(&mut bytes[offset ..]);
-        Multihash { bytes: bytes.freeze() }
+        rand::thread_rng().fill_bytes(&mut bytes[offset..]);
+        Multihash {
+            bytes: bytes.freeze(),
+        }
     }
 
     /// Returns the bytes representation of the multihash.
@@ -268,7 +277,9 @@ impl TryFrom<Vec<u8>> for Multihash {
 
 /// Represents a valid multihash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct MultihashRef<'a> { bytes: &'a [u8] }
+pub struct MultihashRef<'a> {
+    bytes: &'a [u8],
+}
 
 impl<'a> MultihashRef<'a> {
     /// Creates a `MultihashRef` from the given `input`.
@@ -319,7 +330,7 @@ impl<'a> MultihashRef<'a> {
         let bytes = decode::u16(&self.bytes)
             .expect("multihash is known to be valid digest")
             .1;
-        &bytes[1 ..]
+        &bytes[1..]
     }
 
     /// Builds a `Multihash` that owns the data.
@@ -327,7 +338,7 @@ impl<'a> MultihashRef<'a> {
     /// This operation allocates.
     pub fn into_owned(self) -> Multihash {
         Multihash {
-            bytes: Bytes::copy_from_slice(self.bytes)
+            bytes: Bytes::copy_from_slice(self.bytes),
         }
     }
 
@@ -367,13 +378,13 @@ mod tests {
     #[test]
     fn rand_generates_valid_multihash() {
         // Iterate over every possible hash function.
-        for code in 0 .. u16::max_value() {
+        for code in 0..u16::max_value() {
             let hash_fn = match Hash::from_code(code) {
                 Some(c) => c,
                 None => continue,
             };
 
-            for _ in 0 .. 2000 {
+            for _ in 0..2000 {
                 let hash = Multihash::random(hash_fn);
                 assert_eq!(hash, Multihash::try_from(hash.to_vec()).unwrap());
             }

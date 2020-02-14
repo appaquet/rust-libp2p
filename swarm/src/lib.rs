@@ -61,21 +61,11 @@ pub mod protocols_handler;
 pub mod toggle;
 
 pub use behaviour::{
-    NetworkBehaviour,
-    NetworkBehaviourAction,
-    NetworkBehaviourEventProcess,
-    PollParameters
+    NetworkBehaviour, NetworkBehaviourAction, NetworkBehaviourEventProcess, PollParameters,
 };
 pub use protocols_handler::{
-    IntoProtocolsHandler,
-    IntoProtocolsHandlerSelect,
-    KeepAlive,
-    ProtocolsHandler,
-    ProtocolsHandlerEvent,
-    ProtocolsHandlerSelect,
-    ProtocolsHandlerUpgrErr,
-    OneShotHandler,
-    SubstreamProtocol
+    IntoProtocolsHandler, IntoProtocolsHandlerSelect, KeepAlive, OneShotHandler, ProtocolsHandler,
+    ProtocolsHandlerEvent, ProtocolsHandlerSelect, ProtocolsHandlerUpgrErr, SubstreamProtocol,
 };
 
 /// Substream for which a protocol has been chosen.
@@ -84,25 +74,30 @@ pub use protocols_handler::{
 /// [`AsyncWrite`](futures::io::AsyncWrite) traits.
 pub type NegotiatedSubstream = Negotiated<Substream<StreamMuxerBox>>;
 
-use protocols_handler::{NodeHandlerWrapperBuilder, NodeHandlerWrapperError};
-use futures::{prelude::*, executor::{ThreadPool, ThreadPoolBuilder}};
+use futures::{
+    executor::{ThreadPool, ThreadPoolBuilder},
+    prelude::*,
+};
 use libp2p_core::{
-    Executor, Negotiated, Transport, Multiaddr, PeerId, ProtocolName,
     muxing::{StreamMuxer, StreamMuxerBox},
     nodes::{
-        ListenerId, Substream,
         collection::ConnectionInfo,
-        network::{self, Network, NetworkEvent}
+        network::{self, Network, NetworkEvent},
+        ListenerId, Substream,
     },
-    transport::{
-        boxed::Boxed as BoxTransport,
-        TransportError,
-    }
+    transport::{boxed::Boxed as BoxTransport, TransportError},
+    Executor, Multiaddr, Negotiated, PeerId, ProtocolName, Transport,
 };
-use registry::{Addresses, AddressIntoIter};
+use protocols_handler::{NodeHandlerWrapperBuilder, NodeHandlerWrapperError};
+use registry::{AddressIntoIter, Addresses};
 use smallvec::SmallVec;
-use std::{error, fmt, io, ops::{Deref, DerefMut}, pin::Pin, task::{Context, Poll}};
 use std::collections::HashSet;
+use std::{
+    error, fmt, io,
+    ops::{Deref, DerefMut},
+    pin::Pin,
+    task::{Context, Poll},
+};
 use upgrade::UpgradeInfoSend as _;
 
 /// Contains the state of the network, plus the way it should behave.
@@ -143,7 +138,8 @@ pub enum SwarmEvent<TBvEv> {
 }
 
 /// Contains the state of the network, plus the way it should behave.
-pub struct ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo = PeerId> {
+pub struct ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo = PeerId>
+{
     network: Network<
         BoxTransport<(TConnInfo, StreamMuxerBox), io::Error>,
         TInEvent,
@@ -172,11 +168,11 @@ pub struct ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr,
     banned_peers: HashSet<PeerId>,
 
     /// Pending event message to be delivered.
-    send_event_to_complete: Option<(PeerId, TInEvent)>
+    send_event_to_complete: Option<(PeerId, TInEvent)>,
 }
 
-impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Deref for
-    ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
+impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Deref
+    for ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
 {
     type Target = TBehaviour;
 
@@ -185,31 +181,37 @@ impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Deref fo
     }
 }
 
-impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> DerefMut for
-    ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
+impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> DerefMut
+    for ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.behaviour
     }
 }
 
-impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Unpin for
-    ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
+impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Unpin
+    for ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
 {
 }
 
 impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
     ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
-where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
-      TInEvent: Send + 'static,
-      TOutEvent: Send + 'static,
-      TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
-      THandlerErr: error::Error + Send + 'static,
-      THandler: IntoProtocolsHandler + Send + 'static,
-      THandler::Handler: ProtocolsHandler<InEvent = TInEvent, OutEvent = TOutEvent, Error = THandlerErr>,
+where
+    TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
+    TInEvent: Send + 'static,
+    TOutEvent: Send + 'static,
+    TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
+    THandlerErr: error::Error + Send + 'static,
+    THandler: IntoProtocolsHandler + Send + 'static,
+    THandler::Handler:
+        ProtocolsHandler<InEvent = TInEvent, OutEvent = TOutEvent, Error = THandlerErr>,
 {
     /// Builds a new `Swarm`.
-    pub fn new<TTransport, TMuxer>(transport: TTransport, behaviour: TBehaviour, local_peer_id: PeerId) -> Self
+    pub fn new<TTransport, TMuxer>(
+        transport: TTransport,
+        behaviour: TBehaviour,
+        local_peer_id: PeerId,
+    ) -> Self
     where
         TMuxer: StreamMuxer + Send + Sync + 'static,
         TMuxer::OutboundSubstream: Send + 'static,
@@ -221,14 +223,16 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
         TTransport::ListenerUpgrade: Send + 'static,
         TTransport::Dial: Send + 'static,
     {
-        SwarmBuilder::new(transport, behaviour, local_peer_id)
-            .build()
+        SwarmBuilder::new(transport, behaviour, local_peer_id).build()
     }
 
     /// Starts listening on the given address.
     ///
     /// Returns an error if the address is not supported.
-    pub fn listen_on(me: &mut Self, addr: Multiaddr) -> Result<ListenerId, TransportError<io::Error>> {
+    pub fn listen_on(
+        me: &mut Self,
+        addr: Multiaddr,
+    ) -> Result<ListenerId, TransportError<io::Error>> {
         me.network.listen_on(addr)
     }
 
@@ -259,10 +263,8 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                 if peer.connect_iter(addrs, handler).is_err() {
                     me.behaviour.inject_dial_failure(&peer_id);
                 }
-            },
-            network::Peer::PendingConnect(mut peer) => {
-                peer.append_multiaddr_attempts(addrs)
-            },
+            }
+            network::Peer::PendingConnect(mut peer) => peer.append_multiaddr_attempts(addrs),
             network::Peer::Connected(_) | network::Peer::LocalNode => {}
         }
     }
@@ -326,22 +328,22 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
 
     /// Returns the next event produced by the [`NetworkBehaviour`].
     pub async fn next(&mut self) -> TBehaviour::OutEvent {
-        future::poll_fn(move |cx| {
-            loop {
-                let event = futures::ready!(ExpandedSwarm::poll_next_event(Pin::new(self), cx));
-                if let SwarmEvent::Behaviour(event) = event {
-                    return Poll::Ready(event);
-                }
+        future::poll_fn(move |cx| loop {
+            let event = futures::ready!(ExpandedSwarm::poll_next_event(Pin::new(self), cx));
+            if let SwarmEvent::Behaviour(event) = event {
+                return Poll::Ready(event);
             }
-        }).await
+        })
+        .await
     }
 
     /// Internal function used by everything event-related.
     ///
     /// Polls the `Swarm` for the next event.
-    fn poll_next_event(mut self: Pin<&mut Self>, cx: &mut Context)
-        -> Poll<SwarmEvent<TBehaviour::OutEvent>>
-    {
+    fn poll_next_event(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> Poll<SwarmEvent<TBehaviour::OutEvent>> {
         // We use a `this` variable because the compiler can't mutably borrow multiple times
         // across a `Deref`.
         let this = &mut *self;
@@ -352,32 +354,56 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
             match this.network.poll(cx) {
                 Poll::Pending => network_not_ready = true,
                 Poll::Ready(NetworkEvent::NodeEvent { conn_info, event }) => {
-                    this.behaviour.inject_node_event(conn_info.peer_id().clone(), event);
-                },
-                Poll::Ready(NetworkEvent::Connected { conn_info, endpoint }) => {
+                    this.behaviour
+                        .inject_node_event(conn_info.peer_id().clone(), event);
+                }
+                Poll::Ready(NetworkEvent::Connected {
+                    conn_info,
+                    endpoint,
+                }) => {
                     if this.banned_peers.contains(conn_info.peer_id()) {
-                        this.network.peer(conn_info.peer_id().clone())
+                        this.network
+                            .peer(conn_info.peer_id().clone())
                             .into_connected()
                             .expect("the Network just notified us that we were connected; QED")
                             .close();
                     } else {
-                        this.behaviour.inject_connected(conn_info.peer_id().clone(), endpoint);
+                        this.behaviour
+                            .inject_connected(conn_info.peer_id().clone(), endpoint);
                         return Poll::Ready(SwarmEvent::Connected(conn_info.peer_id().clone()));
                     }
-                },
-                Poll::Ready(NetworkEvent::NodeClosed { conn_info, endpoint, error }) => {
-                    log::trace!("Connection {:?} with endpoint {:?} closed by {:?}",
-                                conn_info, endpoint, error);
-                    this.behaviour.inject_disconnected(conn_info.peer_id(), endpoint);
+                }
+                Poll::Ready(NetworkEvent::NodeClosed {
+                    conn_info,
+                    endpoint,
+                    error,
+                }) => {
+                    log::trace!(
+                        "Connection {:?} with endpoint {:?} closed by {:?}",
+                        conn_info,
+                        endpoint,
+                        error
+                    );
+                    this.behaviour
+                        .inject_disconnected(conn_info.peer_id(), endpoint);
                     return Poll::Ready(SwarmEvent::Disconnected(conn_info.peer_id().clone()));
-                },
-                Poll::Ready(NetworkEvent::Replaced { new_info, closed_endpoint, endpoint, .. }) => {
-                    this.behaviour.inject_replaced(new_info.peer_id().clone(), closed_endpoint, endpoint);
-                },
+                }
+                Poll::Ready(NetworkEvent::Replaced {
+                    new_info,
+                    closed_endpoint,
+                    endpoint,
+                    ..
+                }) => {
+                    this.behaviour.inject_replaced(
+                        new_info.peer_id().clone(),
+                        closed_endpoint,
+                        endpoint,
+                    );
+                }
                 Poll::Ready(NetworkEvent::IncomingConnection(incoming)) => {
                     let handler = this.behaviour.new_handler();
                     incoming.accept(handler.into_node_handler_builder());
-                },
+                }
                 Poll::Ready(NetworkEvent::NewListenerAddress { listen_addr, .. }) => {
                     if !this.listened_addrs.contains(&listen_addr) {
                         this.listened_addrs.push(listen_addr.clone())
@@ -390,13 +416,21 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                     this.behaviour.inject_expired_listen_addr(&listen_addr);
                     return Poll::Ready(SwarmEvent::ExpiredListenAddr(listen_addr));
                 }
-                Poll::Ready(NetworkEvent::ListenerClosed { listener_id, .. }) =>
-                    this.behaviour.inject_listener_closed(listener_id),
-                Poll::Ready(NetworkEvent::ListenerError { listener_id, error }) =>
-                    this.behaviour.inject_listener_error(listener_id, &error),
-                Poll::Ready(NetworkEvent::IncomingConnectionError { .. }) => {},
-                Poll::Ready(NetworkEvent::DialError { peer_id, multiaddr, error, new_state }) => {
-                    this.behaviour.inject_addr_reach_failure(Some(&peer_id), &multiaddr, &error);
+                Poll::Ready(NetworkEvent::ListenerClosed { listener_id, .. }) => {
+                    this.behaviour.inject_listener_closed(listener_id)
+                }
+                Poll::Ready(NetworkEvent::ListenerError { listener_id, error }) => {
+                    this.behaviour.inject_listener_error(listener_id, &error)
+                }
+                Poll::Ready(NetworkEvent::IncomingConnectionError { .. }) => {}
+                Poll::Ready(NetworkEvent::DialError {
+                    peer_id,
+                    multiaddr,
+                    error,
+                    new_state,
+                }) => {
+                    this.behaviour
+                        .inject_addr_reach_failure(Some(&peer_id), &multiaddr, &error);
                     if let network::PeerState::NotConnected = new_state {
                         this.behaviour.inject_dial_failure(&peer_id);
                     }
@@ -405,15 +439,18 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                         address: multiaddr,
                         error: Box::new(error),
                     });
-                },
-                Poll::Ready(NetworkEvent::UnknownPeerDialError { multiaddr, error, .. }) => {
-                    this.behaviour.inject_addr_reach_failure(None, &multiaddr, &error);
+                }
+                Poll::Ready(NetworkEvent::UnknownPeerDialError {
+                    multiaddr, error, ..
+                }) => {
+                    this.behaviour
+                        .inject_addr_reach_failure(None, &multiaddr, &error);
                     return Poll::Ready(SwarmEvent::UnreachableAddr {
                         peer_id: None,
                         address: multiaddr,
                         error: Box::new(error),
                     });
-                },
+                }
             }
 
             // Try to deliver pending event.
@@ -423,8 +460,8 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                         Poll::Ready(()) => peer.start_send_event(pending),
                         Poll::Pending => {
                             this.send_event_to_complete = Some((id, pending));
-                            return Poll::Pending
-                        },
+                            return Poll::Pending;
+                        }
                     }
                 }
             }
@@ -434,7 +471,7 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                     local_peer_id: &mut this.network.local_peer_id(),
                     supported_protocols: &this.supported_protocols,
                     listened_addrs: &this.listened_addrs,
-                    external_addrs: &this.external_addrs
+                    external_addrs: &this.external_addrs,
                 };
                 this.behaviour.poll(cx, &mut parameters)
             };
@@ -444,18 +481,18 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                 Poll::Pending => (),
                 Poll::Ready(NetworkBehaviourAction::GenerateEvent(event)) => {
                     return Poll::Ready(SwarmEvent::Behaviour(event))
-                },
+                }
                 Poll::Ready(NetworkBehaviourAction::DialAddress { address }) => {
                     let _ = ExpandedSwarm::dial_addr(&mut *this, address);
-                },
+                }
                 Poll::Ready(NetworkBehaviourAction::DialPeer { peer_id }) => {
                     if this.banned_peers.contains(&peer_id) {
                         this.behaviour.inject_dial_failure(&peer_id);
                     } else {
                         ExpandedSwarm::dial(&mut *this, peer_id.clone());
-                        return Poll::Ready(SwarmEvent::StartConnect(peer_id))
+                        return Poll::Ready(SwarmEvent::StartConnect(peer_id));
                     }
-                },
+                }
                 Poll::Ready(NetworkBehaviourAction::SendEvent { peer_id, event }) => {
                     if let Some(mut peer) = this.network.peer(peer_id.clone()).into_connected() {
                         if let Poll::Ready(()) = peer.poll_ready_event(cx) {
@@ -466,7 +503,7 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                             return Poll::Pending;
                         }
                     }
-                },
+                }
                 Poll::Ready(NetworkBehaviourAction::ReportObservedAddr { address }) => {
                     for addr in this.network.address_translation(&address) {
                         if this.external_addrs.iter().all(|a| *a != addr) {
@@ -474,21 +511,23 @@ where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
                         }
                         this.external_addrs.add(addr);
                     }
-                },
+                }
             }
         }
     }
 }
 
-impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Stream for
-    ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
-where TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
-      THandlerErr: error::Error + Send + 'static,
-      THandler: IntoProtocolsHandler + Send + 'static,
-      TInEvent: Send + 'static,
-      TOutEvent: Send + 'static,
-      THandler::Handler: ProtocolsHandler<InEvent = TInEvent, OutEvent = TOutEvent, Error = THandlerErr>,
-      TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
+impl<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo> Stream
+    for ExpandedSwarm<TBehaviour, TInEvent, TOutEvent, THandler, THandlerErr, TConnInfo>
+where
+    TBehaviour: NetworkBehaviour<ProtocolsHandler = THandler>,
+    THandlerErr: error::Error + Send + 'static,
+    THandler: IntoProtocolsHandler + Send + 'static,
+    TInEvent: Send + 'static,
+    TOutEvent: Send + 'static,
+    THandler::Handler:
+        ProtocolsHandler<InEvent = TInEvent, OutEvent = TOutEvent, Error = THandlerErr>,
+    TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
 {
     type Item = TBehaviour::OutEvent;
 
@@ -542,10 +581,15 @@ pub struct SwarmBuilder<TBehaviour, TConnInfo> {
 }
 
 impl<TBehaviour, TConnInfo> SwarmBuilder<TBehaviour, TConnInfo>
-where TBehaviour: NetworkBehaviour,
-      TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
+where
+    TBehaviour: NetworkBehaviour,
+    TConnInfo: ConnectionInfo<PeerId = PeerId> + fmt::Debug + Clone + Send + 'static,
 {
-    pub fn new<TTransport, TMuxer>(transport: TTransport, behaviour: TBehaviour, local_peer_id: PeerId) -> Self
+    pub fn new<TTransport, TMuxer>(
+        transport: TTransport,
+        behaviour: TBehaviour,
+        local_peer_id: PeerId,
+    ) -> Self
     where
         TMuxer: StreamMuxer + Send + Sync + 'static,
         TMuxer::OutboundSubstream: Send + 'static,
@@ -585,7 +629,10 @@ where TBehaviour: NetworkBehaviour,
     }
 
     /// Shortcut for calling `executor` with an object that calls the given closure.
-    pub fn executor_fn(mut self, executor: impl Fn(Pin<Box<dyn Future<Output = ()> + Send>>) + Send + 'static) -> Self {
+    pub fn executor_fn(
+        mut self,
+        executor: impl Fn(Pin<Box<dyn Future<Output = ()> + Send>>) + Send + 'static,
+    ) -> Self {
         struct SpawnImpl<F>(F);
         impl<F: Fn(Pin<Box<dyn Future<Output = ()> + Send>>)> Executor for SpawnImpl<F> {
             fn exec(&self, f: Pin<Box<dyn Future<Output = ()> + Send>>) {
@@ -597,7 +644,8 @@ where TBehaviour: NetworkBehaviour,
     }
 
     pub fn build(mut self) -> Swarm<TBehaviour, TConnInfo> {
-        let supported_protocols = self.behaviour
+        let supported_protocols = self
+            .behaviour
             .new_handler()
             .inbound_protocol()
             .protocol_info()
@@ -624,7 +672,7 @@ where TBehaviour: NetworkBehaviour,
             self.transport,
             self.local_peer_id,
             executor,
-            self.incoming_limit
+            self.incoming_limit,
         );
 
         ExpandedSwarm {
@@ -634,15 +682,14 @@ where TBehaviour: NetworkBehaviour,
             listened_addrs: SmallVec::new(),
             external_addrs: Addresses::default(),
             banned_peers: HashSet::new(),
-            send_event_to_complete: None
+            send_event_to_complete: None,
         }
     }
 }
 
 /// Dummy implementation of [`NetworkBehaviour`] that doesn't do anything.
 #[derive(Clone, Default)]
-pub struct DummyBehaviour {
-}
+pub struct DummyBehaviour {}
 
 impl NetworkBehaviour for DummyBehaviour {
     type ProtocolsHandler = protocols_handler::DummyProtocolsHandler;
@@ -660,16 +707,25 @@ impl NetworkBehaviour for DummyBehaviour {
 
     fn inject_disconnected(&mut self, _: &PeerId, _: libp2p_core::ConnectedPoint) {}
 
-    fn inject_node_event(&mut self, _: PeerId,
-        _: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent) {}
-
-    fn poll(&mut self, _: &mut Context, _: &mut impl PollParameters) ->
-        Poll<NetworkBehaviourAction<<Self::ProtocolsHandler as
-        ProtocolsHandler>::InEvent, Self::OutEvent>>
-    {
-        Poll::Pending
+    fn inject_node_event(
+        &mut self,
+        _: PeerId,
+        _: <Self::ProtocolsHandler as ProtocolsHandler>::OutEvent,
+    ) {
     }
 
+    fn poll(
+        &mut self,
+        _: &mut Context,
+        _: &mut impl PollParameters,
+    ) -> Poll<
+        NetworkBehaviourAction<
+            <Self::ProtocolsHandler as ProtocolsHandler>::InEvent,
+            Self::OutEvent,
+        >,
+    > {
+        Poll::Pending
+    }
 }
 
 #[cfg(test)]
@@ -677,9 +733,8 @@ mod tests {
     use crate::{DummyBehaviour, SwarmBuilder};
     use libp2p_core::{
         identity,
-        PeerId,
-        PublicKey,
-        transport::dummy::{DummyStream, DummyTransport}
+        transport::dummy::{DummyStream, DummyTransport},
+        PeerId, PublicKey,
     };
     use libp2p_mplex::Multiplex;
 
@@ -692,7 +747,8 @@ mod tests {
         let id = get_random_id();
         let transport = DummyTransport::<(PeerId, Multiplex<DummyStream>)>::new();
         let swarm = SwarmBuilder::new(transport, DummyBehaviour {}, id.into())
-            .incoming_limit(Some(4)).build();
+            .incoming_limit(Some(4))
+            .build();
         assert_eq!(swarm.network.incoming_limit(), Some(4));
     }
 

@@ -39,34 +39,15 @@ mod dht_proto {
 }
 
 pub use addresses::Addresses;
-pub use behaviour::{Kademlia, KademliaConfig, KademliaEvent, Quorum};
 pub use behaviour::{
-    BootstrapResult,
-    BootstrapOk,
-    BootstrapError,
-
-    GetRecordResult,
-    GetRecordOk,
-    GetRecordError,
-
-    PutRecordResult,
-    PutRecordOk,
-    PutRecordError,
-
-    GetClosestPeersResult,
-    GetClosestPeersOk,
-    GetClosestPeersError,
-
-    AddProviderResult,
-    AddProviderOk,
-    AddProviderError,
-
-    GetProvidersResult,
-    GetProvidersOk,
-    GetProvidersError,
+    AddProviderError, AddProviderOk, AddProviderResult, BootstrapError, BootstrapOk,
+    BootstrapResult, GetClosestPeersError, GetClosestPeersOk, GetClosestPeersResult,
+    GetProvidersError, GetProvidersOk, GetProvidersResult, GetRecordError, GetRecordOk,
+    GetRecordResult, PutRecordError, PutRecordOk, PutRecordResult,
 };
+pub use behaviour::{Kademlia, KademliaConfig, KademliaEvent, Quorum};
 pub use protocol::KadConnectionType;
-pub use record::{store, Record, ProviderRecord};
+pub use record::{store, ProviderRecord, Record};
 
 use std::num::NonZeroUsize;
 
@@ -95,4 +76,3 @@ pub const K_VALUE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(20) };
 ///
 /// The current value is `3`.
 pub const ALPHA_VALUE: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(3) };
-
